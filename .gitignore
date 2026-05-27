@@ -1,0 +1,21 @@
+node_modules/
+dist/
+dist-bridge/
+
+# Editor / OS junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Local config
+.env
+.env.local
