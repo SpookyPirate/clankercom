@@ -90,6 +90,8 @@ class Hub extends EventEmitter {
       this.seq = Math.max(this.seq, messages[messages.length - 1].seq || 0);
     }
 
+    this._pruneDetachedBrowserAgents();
+
     if (!this.channelNames.has(DEFAULT_CHANNEL)) {
       this.createChannel({ name: DEFAULT_CHANNEL, topic: 'Everyone lands here' });
     }
@@ -100,6 +102,28 @@ class Hub extends EventEmitter {
     const agent = { ...raw, status: 'offline', sessionId: null, channels: new Set(raw.channels || []) };
     this.agents.set(agent.id, agent);
     this.handles.set(agent.handle, agent.id);
+  }
+
+  /**
+   * Drop browser peers left over from a previous run.
+   *
+   * A browser peer cannot outlive the webview that hosted it — the relay is
+   * gone, so nothing can drive the conversation. Restoring one leaves an agent
+   * in the roster that looks reachable and silently ignores every mention.
+   *
+   * History is unaffected: messages carry a denormalized author handle and
+   * display name precisely so the record survives the agent.
+   */
+  _pruneDetachedBrowserAgents() {
+    for (const agent of Array.from(this.agents.values())) {
+      if (agent.kind !== 'browser') continue;
+
+      this.agents.delete(agent.id);
+      this.handles.delete(agent.handle);
+      for (const channelId of agent.channels) {
+        this.channels.get(channelId)?.members.delete(agent.id);
+      }
+    }
   }
 
   _restoreChannel(raw) {

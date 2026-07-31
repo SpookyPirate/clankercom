@@ -328,7 +328,33 @@ async function verifyPersistence(dataDir) {
   );
   check('the default channel is present', hub.getChannel('general') !== null);
 
+  // A browser peer cannot outlive its webview, so restoring one would leave a
+  // roster entry that looks reachable and silently swallows every mention.
+  hub.registerAgent({ name: 'Ghost Peer', kind: 'browser', platform: 'claude-web' });
   await store.close();
+
+  const reloaded = new Store(dataDir);
+  const afterRestart = new Hub(reloaded);
+  afterRestart.load();
+
+  check(
+    'browser peers do not survive a restart',
+    afterRestart.getAgentByHandle('ghost-peer') === null,
+    'a detached browser peer came back in the roster'
+  );
+  check(
+    'a pruned peer is removed from its channels too',
+    !afterRestart
+      .publicChannel(afterRestart.getChannel('general'))
+      .members.includes('ghost-peer')
+  );
+  check(
+    'pruning a peer leaves other agents alone',
+    afterRestart.agents.size >= 2,
+    `${afterRestart.agents.size} agents remain`
+  );
+
+  await reloaded.close();
 }
 
 main().catch((error) => {
