@@ -263,25 +263,6 @@ button {
   color: var(--signal-bright);
 }
 
-/* Compact variant for a group heading, where space is tight. */
-.switch--mini .switch-track {
-  width: 26px;
-  height: 15px;
-}
-.switch--mini .switch-thumb {
-  width: 9px;
-  height: 9px;
-}
-.switch--mini input:checked + .switch-track .switch-thumb {
-  transform: translateX(11px);
-}
-.switch--mini .switch-label {
-  font-family: var(--font-mono);
-  font-size: var(--t-micro);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
 /* Icon-only control, sized to the minimum comfortable target. */
 .icon-button {
   display: inline-flex;
@@ -658,22 +639,36 @@ button {
   color: var(--ink-faint);
 }
 
-/* Per-agent actions, revealed on hover so the roster stays calm at rest. */
+/* Per-agent actions, revealed on hover so the roster stays calm at rest.
+   The menu button occupies the call sign's slot and the two cross-fade, so
+   nothing overlaps and the row never shifts. */
 .roster-row {
   position: relative;
 }
 
 .roster-actions {
   position: absolute;
-  right: var(--s2);
-  top: var(--s1);
+  right: var(--s3);
+  top: 50%;
+  transform: translateY(-50%);
   opacity: 0;
+  pointer-events: none;
   transition: opacity 120ms var(--ease);
 }
 
 .roster-row:hover .roster-actions,
 .roster-actions:focus-within {
   opacity: 1;
+  pointer-events: auto;
+}
+
+.roster-row:hover .callsign,
+.roster-row:focus-within .callsign {
+  opacity: 0;
+}
+
+.callsign {
+  transition: opacity 120ms var(--ease);
 }
 
 .roster-menu {
@@ -1253,6 +1248,190 @@ button {
     z-index: 10;
     box-shadow: -12px 0 32px rgba(0, 0, 0, 0.5);
   }
+}
+
+/* ============================================
+   Modal
+   ============================================
+   Used where a settings surface needs room to grow. The rail cannot grow;
+   this can. */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s6);
+  background: rgba(3, 5, 8, 0.72);
+  animation: fade-in 140ms var(--ease);
+}
+
+.modal-backdrop[hidden] {
+  display: none;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.modal {
+  width: 100%;
+  max-width: 520px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  animation: rise 160ms var(--ease);
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s4) var(--s5);
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-title);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+}
+
+.modal-section-title {
+  margin: 0 0 var(--s1);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.modal-section-note {
+  margin: 0 0 var(--s3);
+  font-size: var(--t-small);
+  color: var(--ink-faint);
+  max-width: 56ch;
+}
+
+.modal-section .field input {
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--s2);
+  background: var(--void);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--t-small);
+}
+
+.modal-section .field input:focus {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--signal-glow);
+}
+
+/* A permission is a switch plus the sentence explaining what it actually does,
+   because "autoApproveTasks" means nothing on its own. */
+.permission-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.permission-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.permission-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.permission-name {
+  font-size: var(--t-ui);
+  color: var(--ink);
+}
+
+.permission-note {
+  font-size: var(--t-small);
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  padding: var(--s2);
+  border-radius: var(--radius);
+  text-align: left;
+  transition: background-color 120ms var(--ease);
+}
+
+.member-row:hover {
+  background: var(--state-hover);
+}
+
+.member-check {
+  width: 16px;
+  font-family: var(--font-mono);
+  color: var(--ink-faint);
+}
+
+.member-row.is-member .member-check {
+  color: var(--signal-bright);
+}
+
+.member-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--t-ui);
+  color: var(--ink-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-row.is-member .member-name {
+  color: var(--ink);
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s4) var(--s5);
+  border-top: 1px solid var(--line);
 }
 
 @media (prefers-reduced-motion: reduce) {

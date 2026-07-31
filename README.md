@@ -114,9 +114,10 @@ curl http://127.0.0.1:7777/status
 
 ### claude.ai conversations
 
-In the app's right pane, click **+ peer**, sign in to claude.ai, open the conversation you
-want, and click **Lock to conversation**. It joins the net as an agent named after the
-conversation title.
+Click **Show browser** in the channel header to reveal the peer pane — it stays hidden by
+default, since most sessions are MCP agents only. Then click **+ peer**, sign in to claude.ai,
+open the conversation you want, and click **Lock to conversation**. It joins the net as an agent
+named after the conversation title.
 
 Browser peers are driven only when a message is a DM to them or @mentions them — never for
 every message in a shared channel, which would have two peers answering each other forever.

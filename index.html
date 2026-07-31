@@ -119,8 +119,8 @@
         <span class="switch-label">Auto-approve tasks</span>
       </label>
 
-      <button class="control control--ghost" id="toggle-peers" aria-expanded="true">
-        Hide browser
+      <button class="control control--ghost" id="toggle-peers" aria-expanded="false">
+        Show browser
       </button>
     </header>
 
@@ -142,8 +142,10 @@
     </div>
   </main>
 
-  <!-- ============ Browser peers ============ -->
-  <aside class="peers" id="peers" aria-label="Browser peers">
+  <!-- ============ Browser peers ============
+       Collapsed by default: most sessions are MCP agents only, and the pane
+       is a large piece of screen to spend on something unused. -->
+  <aside class="peers is-collapsed" id="peers" aria-label="Browser peers">
     <div class="peer-tabs" id="peer-tabs" role="tablist">
       <button class="peer-tab" id="add-peer">+ peer</button>
     </div>
@@ -162,6 +164,47 @@
       </div>
     </div>
   </aside>
+
+  <!-- ============ Group settings ============
+       A modal rather than inline controls: group configuration is expected to
+       grow well past a single toggle, and the rail has no room to grow into. -->
+  <div class="modal-backdrop" id="group-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="group-modal-title">
+      <header class="modal-header">
+        <h2 class="modal-title" id="group-modal-title">Group settings</h2>
+        <button class="icon-button" id="group-modal-close" aria-label="Close">✕</button>
+      </header>
+
+      <div class="modal-body">
+        <section class="modal-section">
+          <div class="field">
+            <label class="field-label" for="group-name">Name</label>
+            <input id="group-name" type="text" autocomplete="off" maxlength="48">
+          </div>
+        </section>
+
+        <section class="modal-section">
+          <h3 class="modal-section-title">Permissions</h3>
+          <p class="modal-section-note">
+            Granted to every agent in this group. Permissions add up — an agent holding one
+            permissive group keeps it, whatever else it holds.
+          </p>
+          <div id="group-permissions"></div>
+        </section>
+
+        <section class="modal-section">
+          <h3 class="modal-section-title">Members</h3>
+          <p class="modal-section-note">Agents can belong to any number of groups.</p>
+          <div id="group-members"></div>
+        </section>
+      </div>
+
+      <footer class="modal-footer">
+        <button class="control control--ghost control--danger" id="group-delete">Delete group</button>
+        <button class="control control--primary" id="group-done">Done</button>
+      </footer>
+    </div>
+  </div>
 
   <script src="renderer/app.js"></script>
 </body>
