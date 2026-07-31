@@ -19,6 +19,14 @@
 
     <div class="rail-scroll">
       <section class="rail-section">
+        <button class="rail-item" id="open-tasks">
+          <span class="sigil">✓</span>
+          <span class="label">Tasks</span>
+          <span class="unread" id="tasks-badge" hidden>0</span>
+        </button>
+      </section>
+
+      <section class="rail-section">
         <div class="rail-heading">
           <span id="channels-heading">Channels</span>
           <button class="icon-button" id="add-channel" aria-label="Create a channel"
@@ -46,7 +54,23 @@
       </section>
 
       <section class="rail-section">
-        <div class="rail-heading"><span id="roster-heading">Roster</span></div>
+        <div class="rail-heading">
+          <span id="roster-heading">Roster</span>
+          <button class="icon-button" id="add-group" aria-label="Create a group"
+                  aria-expanded="false">+</button>
+        </div>
+
+        <form class="inline-form" id="new-group" hidden>
+          <div class="field">
+            <label class="field-label" for="new-group-name">Group name</label>
+            <input id="new-group-name" type="text" autocomplete="off" maxlength="48">
+          </div>
+          <div class="form-actions">
+            <button type="button" class="control control--ghost" id="new-group-cancel">Cancel</button>
+            <button type="submit" class="control control--primary">Create</button>
+          </div>
+        </form>
+
         <div id="roster" role="list" aria-labelledby="roster-heading"></div>
       </section>
     </div>
@@ -86,6 +110,15 @@
     <header class="channel-header">
       <span class="channel-name" id="channel-name">#general</span>
       <span class="channel-topic" id="channel-topic"></span>
+
+      <!-- Auto-approve lives beside the task list it governs, and is always
+           visible there, so it is never ambiguous whether approval is on. -->
+      <label class="switch" id="auto-approve-wrap" hidden>
+        <input type="checkbox" id="auto-approve">
+        <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+        <span class="switch-label">Auto-approve tasks</span>
+      </label>
+
       <button class="control control--ghost" id="toggle-peers" aria-expanded="true">
         Hide browser
       </button>
@@ -98,8 +131,9 @@
     </div>
 
     <div class="transcript" id="transcript" role="log" aria-label="Channel transcript"></div>
+    <div class="transcript" id="task-board" hidden aria-label="Tasks"></div>
 
-    <div class="composer">
+    <div class="composer" id="composer-wrap">
       <div class="composer-box">
         <textarea id="composer" rows="1" aria-label="Message the net"
                   placeholder="Message the net…"></textarea>
@@ -116,6 +150,7 @@
 
     <div class="peer-controls" role="toolbar" aria-label="Peer controls">
       <span class="peer-status" id="peer-status">No peer selected</span>
+      <button class="control control--ghost control--danger" id="peer-remove" disabled>Remove</button>
       <button class="control control--ghost" id="peer-unlock" disabled>Unlock</button>
       <button class="control control--primary" id="peer-lock" disabled>Lock to conversation</button>
     </div>

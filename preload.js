@@ -10,7 +10,16 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 // Bus events the renderer may subscribe to, allow-listed so a compromised
 // renderer cannot attach to arbitrary IPC channels.
-const SUBSCRIBABLE_EVENTS = ['hub:message', 'hub:agent', 'hub:channel', 'hub:peers'];
+const SUBSCRIBABLE_EVENTS = [
+  'hub:message',
+  'hub:agent',
+  'hub:agentRemoved',
+  'hub:channel',
+  'hub:groups',
+  'hub:task',
+  'hub:settings',
+  'hub:peers',
+];
 
 contextBridge.exposeInMainWorld('clanker', {
   // ---- hub ----
@@ -21,6 +30,22 @@ contextBridge.exposeInMainWorld('clanker', {
   setIdentity: (name, handle) => ipcRenderer.invoke('hub:setIdentity', { name, handle }),
   openDm: (handle) => ipcRenderer.invoke('hub:openDm', { handle }),
   joinChannel: (channel, handle) => ipcRenderer.invoke('hub:joinChannel', { channel, handle }),
+
+  // ---- groups and roster management ----
+  createGroup: (name) => ipcRenderer.invoke('hub:createGroup', { name }),
+  renameGroup: (groupId, name) => ipcRenderer.invoke('hub:renameGroup', { groupId, name }),
+  deleteGroup: (groupId) => ipcRenderer.invoke('hub:deleteGroup', { groupId }),
+  listGroups: () => ipcRenderer.invoke('hub:listGroups'),
+  setGroupMembership: (agentId, groupId, isMember) =>
+    ipcRenderer.invoke('hub:setGroupMembership', { agentId, groupId, isMember }),
+  setGroupPermission: (groupId, permission, value) =>
+    ipcRenderer.invoke('hub:setGroupPermission', { groupId, permission, value }),
+  removeAgent: (agentId) => ipcRenderer.invoke('hub:removeAgent', { agentId }),
+
+  // ---- tasks ----
+  listTasks: () => ipcRenderer.invoke('hub:listTasks'),
+  decideTask: (taskId, approved) => ipcRenderer.invoke('hub:decideTask', { taskId, approved }),
+  setAutoApprove: (enabled) => ipcRenderer.invoke('hub:setAutoApprove', { enabled }),
 
   // ---- browser peers ----
   addPeer: (webContentsId, handle) => ipcRenderer.invoke('peers:add', { webContentsId, handle }),

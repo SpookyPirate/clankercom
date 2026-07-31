@@ -17,6 +17,7 @@
 const { EventEmitter } = require('events');
 
 const { DEFAULT_CHANNEL, TIMEOUTS, LIMITS } = require('../config');
+const { TaskBoard } = require('./tasks');
 
 // ============================================
 // Helpers
@@ -49,6 +50,16 @@ function dmChannelName(agentIdA, agentIdB) {
   return `dm:${[agentIdA, agentIdB].sort().join('~')}`;
 }
 
+/**
+ * Permissions a group can grant. An open map rather than a fixed set — adding
+ * a capability later means adding a key here and honouring it, with existing
+ * groups defaulting to not having it.
+ */
+const DEFAULT_GROUP_PERMISSIONS = {
+  // Work raised by a member skips the human approval queue.
+  autoApproveTasks: false,
+};
+
 class Hub extends EventEmitter {
   constructor(store) {
     super();
@@ -61,12 +72,22 @@ class Hub extends EventEmitter {
     this.handles = new Map();    // handle   -> agentId
     this.channels = new Map();   // channelId -> channel
     this.channelNames = new Map(); // name    -> channelId
+    this.groups = new Map();     // groupId  -> group
     this.messages = [];          // resident window, ascending by seq
     this.waiters = new Set();    // pending long-polls
 
     this.seq = 0;
     this.nextAgentNum = 1;
     this.nextChannelNum = 1;
+    this.nextGroupNum = 1;
+
+    this.defaultChannelName = DEFAULT_CHANNEL;
+
+    // Hub-wide settings, persisted so the human never has to wonder whether
+    // approval is currently required.
+    this.settings = { autoApproveTasks: false };
+
+    this.taskBoard = new TaskBoard(this);
   }
 
   // ============================================
@@ -81,8 +102,12 @@ class Hub extends EventEmitter {
       this.seq = state.seq || 0;
       this.nextAgentNum = state.nextAgentNum || 1;
       this.nextChannelNum = state.nextChannelNum || 1;
+      this.nextGroupNum = state.nextGroupNum || 1;
+      this.settings = { ...this.settings, ...(state.settings || {}) };
       for (const agent of state.agents || []) this._restoreAgent(agent);
       for (const channel of state.channels || []) this._restoreChannel(channel);
+      for (const group of state.groups || []) this.groups.set(group.id, group);
+      this.taskBoard.restore(state.tasks);
     }
 
     this.messages = messages;
@@ -99,7 +124,13 @@ class Hub extends EventEmitter {
 
   _restoreAgent(raw) {
     // Connections do not survive a restart, so everyone comes back offline.
-    const agent = { ...raw, status: 'offline', sessionId: null, channels: new Set(raw.channels || []) };
+    const agent = {
+      ...raw,
+      status: 'offline',
+      sessionId: null,
+      channels: new Set(raw.channels || []),
+      groupIds: new Set(raw.groupIds || []),
+    };
     this.agents.set(agent.id, agent);
     this.handles.set(agent.handle, agent.id);
   }
@@ -132,22 +163,40 @@ class Hub extends EventEmitter {
     this.channelNames.set(channel.name, channel.id);
   }
 
-  /** Serialize agents and channels for the store. Messages persist separately. */
+  /** Serialize everything but messages, which persist to their own log. */
   _persist() {
     this.store.saveState({
       seq: this.seq,
       nextAgentNum: this.nextAgentNum,
       nextChannelNum: this.nextChannelNum,
+      nextGroupNum: this.nextGroupNum,
+      settings: this.settings,
       agents: Array.from(this.agents.values()).map((a) => ({
         ...a,
         channels: Array.from(a.channels),
+        groupIds: Array.from(a.groupIds),
         sessionId: undefined,
       })),
       channels: Array.from(this.channels.values()).map((c) => ({
         ...c,
         members: Array.from(c.members),
       })),
+      groups: Array.from(this.groups.values()),
+      tasks: this.taskBoard.serialize(),
     });
+  }
+
+  /** Public alias, for subsystems that mutate hub-owned state. */
+  persist() {
+    this._persist();
+  }
+
+  /** Change a hub-wide setting. Currently just task auto-approval. */
+  updateSettings(patch) {
+    this.settings = { ...this.settings, ...patch };
+    this._persist();
+    this.emit('settings:changed', this.settings);
+    return this.settings;
   }
 
   // ============================================
@@ -193,6 +242,7 @@ class Hub extends EventEmitter {
       // False for auto-derived handles, so a later join_hub can replace the
       // placeholder rather than leaving the agent stuck with it.
       handleClaimed: claimed !== false,
+      groupIds: new Set(),
       channels: new Set(),
       cursor: this.seq, // new agents start from "now", not the full backlog
       sessionId: sessionId || null,
@@ -299,6 +349,11 @@ class Hub extends EventEmitter {
       description: agent.description,
       status: this.presenceOf(agent),
       lastSeen: agent.lastSeen,
+      groupIds: Array.from(agent.groupIds || []),
+      groups: Array.from(agent.groupIds || [])
+        .map((id) => this.groups.get(id)?.name)
+        .filter(Boolean),
+      canAutoApprove: this.canAutoApprove(agent.id),
       channels: Array.from(agent.channels)
         .map((id) => this.channels.get(id)?.name)
         .filter(Boolean),
@@ -307,6 +362,154 @@ class Hub extends EventEmitter {
 
   listAgents() {
     return Array.from(this.agents.values()).map((a) => this.publicAgent(a));
+  }
+
+  /**
+   * Remove an agent from the roster. Used to clear out old connections that
+   * are never coming back.
+   *
+   * History is unaffected — every message carries a denormalized author handle
+   * and display name precisely so the record outlives the agent.
+   */
+  removeAgent(agentId) {
+    const agent = this.agents.get(agentId);
+    if (!agent) return null;
+
+    for (const channelId of agent.channels) {
+      this.channels.get(channelId)?.members.delete(agentId);
+    }
+    this.agents.delete(agentId);
+    this.handles.delete(agent.handle);
+
+    // Any long-poll this agent was holding would otherwise never resolve.
+    for (const waiter of Array.from(this.waiters)) {
+      if (waiter.agent.id !== agentId) continue;
+      clearTimeout(waiter.timer);
+      this.waiters.delete(waiter);
+      waiter.resolve([]);
+    }
+
+    this._persist();
+    this.emit('agent:removed', { id: agentId, handle: agent.handle });
+    return agent;
+  }
+
+  // ============================================
+  // Groups
+  // ============================================
+
+  /**
+   * Groups behave like roles: an agent holds as many as apply, and each group
+   * carries permissions the human grants to everyone in it.
+   *
+   * Agents can read their own groups, so "you are in Research" is something an
+   * agent can act on rather than decoration for the human alone.
+   */
+  createGroup({ name, permissions = {} }) {
+    const label = String(name || '').trim().slice(0, 48) || `Group ${this.nextGroupNum}`;
+    const existing = Array.from(this.groups.values()).find(
+      (group) => group.name.toLowerCase() === label.toLowerCase()
+    );
+    if (existing) return existing;
+
+    const group = {
+      id: `grp_${this.nextGroupNum++}`,
+      name: label,
+      permissions: { ...DEFAULT_GROUP_PERMISSIONS, ...permissions },
+      createdAt: Date.now(),
+    };
+    this.groups.set(group.id, group);
+    this._persist();
+    this.emit('group:changed', this.listGroups());
+    return group;
+  }
+
+  renameGroup(groupId, name) {
+    const group = this._requireGroup(groupId);
+    group.name = String(name).trim().slice(0, 48) || group.name;
+    this._persist();
+    this.emit('group:changed', this.listGroups());
+    return group;
+  }
+
+  /**
+   * Grant or revoke a permission for everyone in a group. Permissions are an
+   * open map rather than a fixed set, so a new one is additive.
+   */
+  setGroupPermission(groupId, permission, value) {
+    const group = this._requireGroup(groupId);
+    group.permissions = { ...group.permissions, [permission]: !!value };
+    this._persist();
+    this.emit('group:changed', this.listGroups());
+    return group;
+  }
+
+  /** Deleting a group leaves its members in place, just without that role. */
+  deleteGroup(groupId) {
+    if (!this.groups.has(groupId)) return null;
+
+    for (const agent of this.agents.values()) agent.groupIds.delete(groupId);
+    this.groups.delete(groupId);
+
+    this._persist();
+    this.emit('group:changed', this.listGroups());
+    return groupId;
+  }
+
+  setGroupMembership(agentId, groupId, isMember) {
+    const agent = this.agents.get(agentId);
+    if (!agent) throw new Error(`unknown agent: ${agentId}`);
+    this._requireGroup(groupId);
+
+    if (isMember) agent.groupIds.add(groupId);
+    else agent.groupIds.delete(groupId);
+
+    this._persist();
+    this.emit('agent:updated', this.publicAgent(agent));
+    return agent;
+  }
+
+  /**
+   * Whether work raised by this agent skips the approval queue.
+   *
+   * The master switch covers everyone. Otherwise any single group granting the
+   * permission is enough — groups add capability, they never remove it, so a
+   * trusted role cannot be cancelled out by also holding an untrusted one.
+   */
+  canAutoApprove(agentId) {
+    if (this.settings.autoApproveTasks) return true;
+
+    const agent = this.agents.get(agentId);
+    if (!agent) return false;
+
+    return Array.from(agent.groupIds).some(
+      (groupId) => this.groups.get(groupId)?.permissions?.autoApproveTasks
+    );
+  }
+
+  resolveGroup(reference) {
+    if (!reference) return null;
+    if (this.groups.has(reference)) return this.groups.get(reference);
+    return (
+      Array.from(this.groups.values()).find(
+        (group) => group.name.toLowerCase() === String(reference).toLowerCase()
+      ) || null
+    );
+  }
+
+  listGroups() {
+    return Array.from(this.groups.values()).map((group) => ({
+      ...group,
+      members: Array.from(this.agents.values())
+        .filter((agent) => agent.groupIds.has(group.id))
+        .map((agent) => agent.handle),
+    }));
+  }
+
+  _requireGroup(groupId) {
+    const group = this.groups.get(groupId);
+    if (!group) throw new Error(`no group with id ${groupId}`);
+    return group;
   }
 
   // ============================================

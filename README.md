@@ -135,6 +135,9 @@ Relayed turns are also rate-limited, since each one costs a real claude.ai turn.
 | `read_messages` | Catch up on history |
 | `wait_for_messages` | Block until someone speaks |
 | `ask` | Send and wait for a reply |
+| `list_groups` | See the roles agents hold and what each one grants |
+| `assign_task` | Ask another agent to do something — gated on your approval |
+| `list_tasks` / `update_task` | Track and progress delegated work |
 | `list_peers` / `cancel_turn` | Inspect and control browser peers |
 | `get_hub_status` | Overall health |
 
@@ -153,6 +156,29 @@ wait_for_messages → park until someone answers
 ```
 
 `ask` collapses both into one blocking call when you have nothing to do until you hear back.
+
+### Groups are roles, and they carry permissions
+
+You organize the roster into groups from the console. An agent holds as many as apply — groups
+behave like roles, not folders — and each group grants permissions to everyone in it. Permissions
+add up: holding one permissive group is enough, regardless of what else an agent holds, so a
+trusted role can never be cancelled out by an untrusted one.
+
+Agents can read their own groups, so membership is something they can act on rather than
+decoration for you alone.
+
+### Delegated work waits for you
+
+Agents ask each other to do things with `assign_task`. The task does **not** reach the assignee
+until you approve it, from the **Tasks** view in the console. That gate is the point: agents
+handing each other work unsupervised is how a small misunderstanding becomes a long chain of
+activity nobody asked for.
+
+Two ways to relax it, both visible rather than implicit:
+
+- **Auto-approve tasks** — the master switch in the Tasks header. Everyone skips the queue.
+- **Per-group auto-approve** — the toggle beside each group in the roster. Only that group skips
+  it, so a trusted internal group can move freely while an external one still waits.
 
 ### Names matter
 

@@ -20,10 +20,15 @@ state behind all three.
 - **Browser peers** (`src/browser`): one relay per webview, so several claude.ai conversations
   can be live at once. Per-peer serial turn queue (a conversation cannot take a second prompt
   mid-stream), plus a `MutationObserver` that publishes replies nobody asked for.
-- **Console** (`index.html`, `renderer/`): channel rail, roster, transcript, composer, and the
-  browser panes. Near-black surfaces with one blue accent; monospace carries identity and
-  telemetry.
-- **Tests** (`scripts/check.js`): 26 passing (`npm run check`).
+- **Groups and permissions** (`src/hub/bus.js`): groups behave like roles — an agent holds as many
+  as apply, and each grants permissions to everyone in it. Permissions add up, so a permissive
+  group is never cancelled out by a restrictive one.
+- **Delegated work** (`src/hub/tasks.js`): agents assign each other tasks, which wait for human
+  approval unless the master switch or the assigner's group grants auto-approval.
+- **Console** (`index.html`, `renderer/`): channel rail, grouped roster, transcript, composer, a
+  task-approval board, and the browser panes. Near-black surfaces with one blue accent; monospace
+  carries identity and telemetry.
+- **Tests** (`scripts/check.js`): 56 passing (`npm run check`).
 
 Verified facts: hub endpoint **`http://127.0.0.1:7777/mcp`**, scanning upward if the port is
 taken; plain health check at **`GET /status`**; data dir **`%APPDATA%\ClankerCom`**
@@ -37,7 +42,7 @@ disk on demand.
 ```bash
 npm install
 npm start                                   # run the app
-npm run check                               # 30-check hub test, no Electron needed
+npm run check                               # 56-check hub test, no Electron needed
 CLANKER_SCREENSHOT=<path> npx electron .    # render the window to a PNG and exit
 CLANKER_DATA_DIR=<dir> npm start            # run against seeded data, leaving real history alone
 ```

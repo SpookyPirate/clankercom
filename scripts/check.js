@@ -149,8 +149,138 @@ async function bootAndBind(portValue) {
   }
 }
 
+// ============================================
+// Groups, permissions, and delegated work
+// ============================================
+
+/**
+ * Exercised directly against the hub rather than over MCP: these are model
+ * rules, and testing them here keeps the failure message pointed at the rule
+ * that broke rather than at a transport layer.
+ */
+async function verifyGroupsAndTasks() {
+  console.log('\ngroups, permissions, and tasks');
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-tasks-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  const human = hub.registerAgent({ name: 'Operator', kind: 'human', platform: 'human' });
+  const trusted = hub.registerAgent({ name: 'Trusted Agent', platform: 'claude-code' });
+  const watched = hub.registerAgent({ name: 'Watched Agent', platform: 'openai' });
+
+  // ---- groups behave like roles ----
+  const research = hub.createGroup({ name: 'Research' });
+  const deploy = hub.createGroup({ name: 'Deploy' });
+
+  hub.setGroupMembership(trusted.id, research.id, true);
+  hub.setGroupMembership(trusted.id, deploy.id, true);
+  check(
+    'an agent can hold several groups at once',
+    hub.publicAgent(trusted).groups.length === 2,
+    JSON.stringify(hub.publicAgent(trusted).groups)
+  );
+
+  hub.setGroupMembership(trusted.id, deploy.id, false);
+  check('a group can be removed without touching the others', hub.publicAgent(trusted).groups.length === 1);
+
+  // ---- permissions add up ----
+  check('tasks need approval by default', !hub.canAutoApprove(trusted.id));
+
+  hub.setGroupPermission(research.id, 'autoApproveTasks', true);
+  check('a permissive group grants auto-approval', hub.canAutoApprove(trusted.id));
+  check('an agent outside that group is unaffected', !hub.canAutoApprove(watched.id));
+
+  hub.setGroupMembership(trusted.id, deploy.id, true);
+  check(
+    'holding a restrictive group does not cancel a permissive one',
+    hub.canAutoApprove(trusted.id),
+    'permissions must add, never subtract'
+  );
+
+  hub.updateSettings({ autoApproveTasks: true });
+  check('the master switch covers everyone', hub.canAutoApprove(watched.id));
+  hub.updateSettings({ autoApproveTasks: false });
+
+  // ---- the approval gate ----
+  const gated = hub.taskBoard.create({
+    fromAgentId: watched.id,
+    toAgentId: trusted.id,
+    title: 'Check the deploy logs',
+  });
+  check('work from an unpermitted agent waits for approval', gated.status === 'pending_approval');
+
+  let blocked = null;
+  try {
+    hub.taskBoard.setStatus(gated.id, 'in_progress', trusted.id);
+  } catch (error) {
+    blocked = error.message;
+  }
+  check('an unapproved task cannot be started', /needs approval/.test(blocked || ''), blocked);
+
+  const auto = hub.taskBoard.create({
+    fromAgentId: trusted.id,
+    toAgentId: watched.id,
+    title: 'Summarize findings',
+  });
+  check('work from a permitted agent skips the queue', auto.status === 'approved');
+  check('an auto-approved task records how it was cleared', auto.decidedBy === 'auto');
+
+  // ---- lifecycle ----
+  hub.taskBoard.decide(gated.id, { approved: true, byAgentId: human.id });
+  check('approval releases the task', hub.taskBoard.get(gated.id).status === 'approved');
+
+  hub.taskBoard.setStatus(gated.id, 'in_progress', trusted.id);
+  hub.taskBoard.setStatus(gated.id, 'done', trusted.id);
+  const finished = hub.taskBoard.get(gated.id);
+  check('the assignee can carry a task to done', finished.status === 'done' && !!finished.completedAt);
+
+  let outsider = null;
+  try {
+    hub.taskBoard.setStatus(auto.id, 'done', human.id);
+  } catch (error) {
+    outsider = error.message;
+  }
+  check('an uninvolved agent cannot close someone else\'s task', /only the agent/.test(outsider || ''), outsider);
+
+  check(
+    'tasks are listed for the agent they are assigned to',
+    hub.taskBoard.list({ assigneeId: watched.id }).some((task) => task.id === auto.id)
+  );
+
+  // ---- removal preserves history ----
+  const before = hub.readMessages('general', { limit: 50 }).length;
+  hub.removeAgent(watched.id);
+  check('a removed agent leaves the roster', hub.getAgentByHandle('watched-agent') === null);
+  check(
+    'removing an agent leaves the transcript intact',
+    hub.readMessages('general', { limit: 50 }).length === before,
+    'messages carry a denormalized author precisely so this holds'
+  );
+
+  // ---- groups survive a restart ----
+  await store.close();
+  const reopened = new Store(dataDir);
+  const restored = new Hub(reopened);
+  restored.load();
+
+  check('groups survive a restart', restored.listGroups().length === 2);
+  check(
+    'group permissions survive a restart',
+    restored.resolveGroup('Research')?.permissions?.autoApproveTasks === true
+  );
+  check(
+    'group membership survives a restart',
+    restored.canAutoApprove(restored.getAgentByHandle('trusted-agent').id)
+  );
+  check('tasks survive a restart', restored.taskBoard.list().length === 2);
+  await reopened.close();
+}
+
 async function main() {
   await verifyPortSelection();
+  await verifyGroupsAndTasks();
 
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-check-'));
   console.log(`\nClankerCom hub check\ndata dir: ${dataDir}\n`);

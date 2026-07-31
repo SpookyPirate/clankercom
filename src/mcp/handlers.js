@@ -52,6 +52,18 @@ function formatTranscript(messages, { header } = {}) {
   return `${header ? header + '\n' : ''}${body}\n\n-- latest seq: ${latest} --`;
 }
 
+/** Render tasks as a compact list. Status leads, since that drives what to do next. */
+function formatTasks(tasks) {
+  return tasks
+    .map((task) => {
+      const status = task.status.replace('_', ' ');
+      const header = `${task.id}  [${status}]  @${task.fromHandle} → @${task.toHandle}`;
+      const detail = task.detail ? `\n     ${task.detail.replace(/\n/g, '\n     ')}` : '';
+      return `${header}\n     ${task.title}${detail}`;
+    })
+    .join('\n\n');
+}
+
 // ============================================
 // Identity
 // ============================================
@@ -230,8 +242,9 @@ const handlers = {
 
     const lines = agents.map((agent) => {
       const marker = { online: '●', away: '◐', offline: '○' }[agent.status] || '○';
+      const group = agent.groups.length ? ` {${agent.groups.join(', ')}}` : '';
       const detail = agent.description ? `\n    ${agent.description}` : '';
-      return `${marker} ${agent.displayName} — @${agent.handle} [${agent.platform}]${detail}`;
+      return `${marker} ${agent.displayName} — @${agent.handle} [${agent.platform}]${group}${detail}`;
     });
     return asText(`${agents.length} agent(s):\n${lines.join('\n')}`);
   },
@@ -362,6 +375,87 @@ const handlers = {
       );
     }
     return asText(formatTranscript(replies));
+  },
+
+  // ---- groups ----
+
+  list_groups(_args, context) {
+    const { hub } = context;
+    ensureIdentity(context);
+
+    const groups = hub.listGroups();
+    if (!groups.length) {
+      return asText('No groups yet. The human organizes the roster into groups from the console.');
+    }
+
+    // Groups work like roles: an agent holds as many as apply, and each grants
+    // permissions to everyone in it.
+    const lines = groups.map((group) => {
+      const granted = Object.entries(group.permissions || {})
+        .filter(([, value]) => value)
+        .map(([name]) => name);
+      const permissions = granted.length ? `  grants: ${granted.join(', ')}` : '';
+      const members = group.members.length ? group.members.map((m) => '@' + m).join(', ') : 'empty';
+      return `${group.name} — ${members}${permissions}`;
+    });
+
+    const ungrouped = hub.listAgents().filter((agent) => !agent.groups.length);
+    if (ungrouped.length) {
+      lines.push(`No group — ${ungrouped.map((a) => '@' + a.handle).join(', ')}`);
+    }
+    return asText(lines.join('\n'));
+  },
+
+  // ---- delegated work ----
+
+  assign_task(args, context) {
+    const { hub } = context;
+    const agent = ensureIdentity(context);
+
+    const target = hub.resolveAgent(stripSigil(args.agent));
+    if (!target) {
+      throw new Error(`no agent with handle "${stripSigil(args.agent)}". Call list_agents first.`);
+    }
+    if (target.id === agent.id) throw new Error('you cannot assign a task to yourself');
+
+    const channel = args.channel ? hub.getChannel(stripSigil(args.channel)) : null;
+    const task = hub.taskBoard.create({
+      fromAgentId: agent.id,
+      toAgentId: target.id,
+      title: args.title,
+      detail: args.detail || '',
+      channelId: channel?.id || null,
+    });
+
+    return asText(
+      task.status === 'approved'
+        ? `Raised ${task.id} for @${target.handle}, auto-approved. They can see it now.`
+        : `Raised ${task.id} for @${target.handle}. It is waiting on the human to approve it — ` +
+            `@${target.handle} cannot see it yet. Check back with list_tasks rather than re-sending.`
+    );
+  },
+
+  list_tasks(args, context) {
+    const { hub } = context;
+    const agent = ensureIdentity(context);
+
+    const scope = args.scope || 'for_me';
+    const tasks = hub.taskBoard.list({
+      assigneeId: scope === 'for_me' ? agent.id : null,
+      assignerId: scope === 'from_me' ? agent.id : null,
+      status: args.status || null,
+      openOnly: !!args.open_only,
+    });
+
+    if (!tasks.length) return asText('No tasks match.');
+    return asText(formatTasks(tasks));
+  },
+
+  update_task(args, context) {
+    const { hub } = context;
+    const agent = ensureIdentity(context);
+    const task = hub.taskBoard.setStatus(args.task_id, args.status, agent.id);
+    return asText(`${task.id} is now ${task.status.replace('_', ' ')}.`);
   },
 
   // ---- browser peers ----

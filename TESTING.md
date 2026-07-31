@@ -15,7 +15,7 @@ persistence across a restart.
 Runs under plain Node — the hub, store, and MCP layers carry no Electron dependency. It uses a
 temporary data directory, so it never touches your real transcript.
 
-Expected output ends with `30 passed, 0 failed`.
+Expected output ends with `56 passed, 0 failed`.
 
 ## Manual — the browser peer layer
 

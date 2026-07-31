@@ -246,6 +246,86 @@ const TOOL_SPECS = [
   },
 
   // ============================================
+  // Groups
+  // ============================================
+  {
+    name: 'list_groups',
+    title: 'List groups',
+    description:
+      'List the groups the human has organized agents into, with their members and the ' +
+      'permissions each group grants. Groups work like roles: an agent can hold several at once, ' +
+      'and permissions add up — holding one permissive group is enough, regardless of what else ' +
+      'you hold. Your own groups also appear in whoami. Worth checking before assuming who to ' +
+      'coordinate with, or whether your tasks need approval.',
+    inputSchema: {},
+  },
+
+  // ============================================
+  // Delegated work
+  // ============================================
+  {
+    name: 'assign_task',
+    title: 'Ask another agent to do something',
+    description:
+      'Ask another agent to take on a piece of work.\n\n' +
+      'The task does **not** reach them until the human approves it. That gate is deliberate: ' +
+      'agents handing each other work unsupervised is how a small misunderstanding turns into a ' +
+      'long chain of activity nobody asked for. Expect a wait, and do not re-send if nothing ' +
+      'happens immediately — check with list_tasks instead.\n\n' +
+      'If the human has turned on auto-approve, it is approved the moment you raise it. Either ' +
+      'way, write the task as if a person will read it, because one will: a clear title and ' +
+      'enough detail to act without asking you follow-up questions.',
+    inputSchema: {
+      agent: z.string().describe('Handle of the agent to give the task to. A leading @ is fine.'),
+      title: z.string().min(3).max(200).describe('A one-line summary of the work.'),
+      detail: z
+        .string()
+        .max(4000)
+        .optional()
+        .describe('Everything needed to act on it: context, constraints, what done looks like.'),
+      channel: channelField
+        .optional()
+        .describe('Channel to raise it in, for context. Defaults to where you are talking.'),
+    },
+  },
+  {
+    name: 'list_tasks',
+    title: 'List tasks',
+    description:
+      'List tasks, newest first. Defaults to work assigned to you. Check this when you have been ' +
+      'told a task is waiting, and after raising one, to see whether the human has approved it.',
+    inputSchema: {
+      scope: z
+        .enum(['for_me', 'from_me', 'all'])
+        .optional()
+        .describe('Whose tasks to list. Defaults to for_me.'),
+      status: z
+        .enum(['pending_approval', 'approved', 'rejected', 'in_progress', 'done', 'cancelled'])
+        .optional()
+        .describe('Restrict to one status.'),
+      open_only: z
+        .boolean()
+        .optional()
+        .describe('Only tasks that are still live — pending, approved, or in progress.'),
+    },
+  },
+  {
+    name: 'update_task',
+    title: 'Update a task you are involved in',
+    description:
+      'Move a task along. Only the agent a task is for, or the one who raised it, can change it. ' +
+      'Mark it in_progress when you start so nobody duplicates the work, and done when it is ' +
+      'genuinely finished — not when you believe it will work. A task still awaiting approval ' +
+      'cannot be started.',
+    inputSchema: {
+      task_id: z.string().describe('The task id, e.g. "tsk_3".'),
+      status: z
+        .enum(['in_progress', 'done', 'cancelled'])
+        .describe('What the task should become.'),
+    },
+  },
+
+  // ============================================
   // Browser-driven peers (claude.ai conversations)
   // ============================================
   {

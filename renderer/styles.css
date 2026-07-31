@@ -187,6 +187,101 @@ button {
   background: var(--signal);
 }
 
+/* Destructive actions read as ghost until hovered, so they never compete with
+   the primary action beside them. */
+.control--danger:hover:not(:disabled) {
+  color: #fca5a5;
+  border-color: #7f1d1d;
+  background: rgba(127, 29, 29, 0.18);
+}
+
+/* ---- Switch ----
+   Used wherever a setting is on or off and its state must be readable at a
+   glance rather than inferred from a label. */
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.switch[hidden] {
+  display: none;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-track {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  transition: background-color 140ms var(--ease), border-color 140ms var(--ease);
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  transition: transform 140ms var(--ease), background-color 140ms var(--ease);
+}
+
+.switch input:checked + .switch-track {
+  background: var(--signal);
+  border-color: var(--signal);
+}
+
+.switch input:checked + .switch-track .switch-thumb {
+  transform: translateX(14px);
+  background: #05070b;
+}
+
+.switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
+.switch-label {
+  font-size: var(--t-small);
+  color: var(--ink-dim);
+}
+
+.switch input:checked ~ .switch-label {
+  color: var(--signal-bright);
+}
+
+/* Compact variant for a group heading, where space is tight. */
+.switch--mini .switch-track {
+  width: 26px;
+  height: 15px;
+}
+.switch--mini .switch-thumb {
+  width: 9px;
+  height: 9px;
+}
+.switch--mini input:checked + .switch-track .switch-thumb {
+  transform: translateX(11px);
+}
+.switch--mini .switch-label {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 /* Icon-only control, sized to the minimum comfortable target. */
 .icon-button {
   display: inline-flex;
@@ -545,6 +640,95 @@ button {
   padding: 1px var(--s1);
 }
 
+/* Group heading inside the roster — quieter than a rail heading, since it
+   subdivides an existing section rather than starting a new one. */
+.group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s2) var(--s4) var(--s1);
+  font-size: var(--t-small);
+  color: var(--ink-dim);
+}
+
+.group-heading .count {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
+/* Per-agent actions, revealed on hover so the roster stays calm at rest. */
+.roster-row {
+  position: relative;
+}
+
+.roster-actions {
+  position: absolute;
+  right: var(--s2);
+  top: var(--s1);
+  opacity: 0;
+  transition: opacity 120ms var(--ease);
+}
+
+.roster-row:hover .roster-actions,
+.roster-actions:focus-within {
+  opacity: 1;
+}
+
+.roster-menu {
+  margin: 0 var(--s3) var(--s2);
+  padding: var(--s2);
+  background: var(--void);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.roster-menu[hidden] {
+  display: none;
+}
+
+.roster-menu .menu-label {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: var(--t-small);
+  color: var(--ink-dim);
+  transition: background-color 120ms var(--ease), color 120ms var(--ease);
+}
+
+.menu-item:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+
+.menu-item.is-current {
+  color: var(--signal-bright);
+}
+
+.menu-item.is-danger:hover {
+  color: #fca5a5;
+}
+
+.menu-divider {
+  height: 1px;
+  background: var(--line);
+  margin: var(--s1) 0;
+}
+
 /* ============================================
    Conversation
    ============================================ */
@@ -778,6 +962,100 @@ button {
   font-size: var(--t-small);
   color: var(--ink-dim);
   user-select: all;
+}
+
+/* ---- Task board ----
+   Pending work leads, because it is the only part of the list that is blocked
+   on the human. Everything else is a record. */
+
+.task-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: var(--s3);
+  margin-bottom: var(--s3);
+  max-width: 78ch;
+}
+
+.task-card.is-pending {
+  border-left: 2px solid var(--signal);
+  background: linear-gradient(90deg, var(--signal-glow), transparent 40%), var(--panel);
+}
+
+.task-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-bottom: var(--s1);
+}
+
+.task-id {
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
+  user-select: all;
+}
+
+.task-status {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 1px var(--s1);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  color: var(--ink-faint);
+}
+
+.task-status.is-pending {
+  color: var(--signal-bright);
+  border-color: var(--signal);
+}
+.task-status.is-active {
+  color: var(--live);
+  border-color: #14532d;
+}
+.task-status.is-closed {
+  color: var(--ink-faint);
+}
+
+.task-route {
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
+}
+
+.task-title {
+  font-size: var(--t-body);
+  color: var(--ink);
+  margin-bottom: var(--s1);
+}
+
+.task-detail {
+  font-size: var(--t-ui);
+  color: var(--ink-dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-actions {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+.task-group-heading {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: var(--s5) 0 var(--s2);
+}
+
+.task-group-heading:first-child {
+  margin-top: 0;
 }
 
 /* ---- Composer ---- */

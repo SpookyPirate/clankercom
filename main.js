@@ -95,8 +95,12 @@ function forwardHubEvents() {
   hub.on('message', (message) => send('hub:message', message));
   hub.on('agent:joined', (agent) => send('hub:agent', agent));
   hub.on('agent:updated', (agent) => send('hub:agent', agent));
+  hub.on('agent:removed', (agent) => send('hub:agentRemoved', agent));
   hub.on('channel:created', (channel) => send('hub:channel', channel));
   hub.on('channel:updated', (channel) => send('hub:channel', channel));
+  hub.on('group:changed', (groups) => send('hub:groups', groups));
+  hub.on('task:changed', (task) => send('hub:task', task));
+  hub.on('settings:changed', (settings) => send('hub:settings', settings));
   peers.on('peers:changed', (list) => send('hub:peers', list));
 }
 
@@ -180,6 +184,9 @@ ipcMain.handle('hub:bootstrap', async () => ({
   self: hub.publicAgent(humanAgent),
   agents: hub.listAgents(),
   channels: hub.listChannels(humanAgent.id),
+  groups: hub.listGroups(),
+  tasks: hub.taskBoard.list().map((task) => hub.taskBoard.publicTask(task)),
+  settings: hub.settings,
   peers: peers.list(),
   port: hubServer.getPort(),
   defaultChannel: DEFAULT_CHANNEL,
@@ -220,6 +227,48 @@ ipcMain.handle('hub:joinChannel', async (_event, { channel, handle }) => {
   if (!agent) throw new Error(`unknown agent: ${handle}`);
   return hub.publicChannel(hub.joinChannel(agent.id, channel));
 });
+
+// ============================================
+// IPC — groups and roster management
+// ============================================
+
+ipcMain.handle('hub:createGroup', async (_event, { name }) => hub.createGroup({ name }));
+ipcMain.handle('hub:renameGroup', async (_event, { groupId, name }) =>
+  hub.renameGroup(groupId, name)
+);
+ipcMain.handle('hub:deleteGroup', async (_event, { groupId }) => hub.deleteGroup(groupId));
+ipcMain.handle('hub:listGroups', async () => hub.listGroups());
+
+ipcMain.handle('hub:setGroupMembership', async (_event, { agentId, groupId, isMember }) =>
+  hub.publicAgent(hub.setGroupMembership(agentId, groupId, isMember))
+);
+
+ipcMain.handle('hub:setGroupPermission', async (_event, { groupId, permission, value }) =>
+  hub.setGroupPermission(groupId, permission, value)
+);
+
+ipcMain.handle('hub:removeAgent', async (_event, { agentId }) => {
+  // Removing yourself would leave the console with no identity to post as.
+  if (agentId === humanAgent.id) throw new Error('you cannot remove yourself from the roster');
+  hub.removeAgent(agentId);
+  return true;
+});
+
+// ============================================
+// IPC — tasks
+// ============================================
+
+ipcMain.handle('hub:listTasks', async () =>
+  hub.taskBoard.list().map((task) => hub.taskBoard.publicTask(task))
+);
+
+ipcMain.handle('hub:decideTask', async (_event, { taskId, approved }) =>
+  hub.taskBoard.publicTask(hub.taskBoard.decide(taskId, { approved, byAgentId: humanAgent.id }))
+);
+
+ipcMain.handle('hub:setAutoApprove', async (_event, { enabled }) =>
+  hub.updateSettings({ autoApproveTasks: !!enabled })
+);
 
 // ============================================
 // IPC — browser peers

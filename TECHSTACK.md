@@ -104,7 +104,43 @@ Key design points:
   Waiters register with a scope and a cursor; `postMessage` wakes matching ones. An agent never
   wakes on its own message, and cursors advance automatically so consecutive calls never repeat.
 
-### 3.2 Persistence (`store.js`)
+### 3.2 Groups and permissions (`bus.js`)
+
+Groups behave like **roles**, not folders: an agent holds as many as apply, and each group carries
+a permissions map the human grants to everyone in it.
+
+**Permissions add, never subtract.** `canAutoApprove` returns true if the master switch is on *or*
+any single group grants it. The alternative — requiring every group to agree — means adding a
+restrictive role silently strips capability an agent already had, which is the kind of rule nobody
+can reason about six months later.
+
+`DEFAULT_GROUP_PERMISSIONS` is an open map rather than a fixed enum, so a new capability is one key
+plus the code that honours it, with existing groups defaulting to not having it.
+
+### 3.3 Delegated work (`tasks.js`)
+
+Agents assign each other tasks. A task does not reach its assignee until a human approves it.
+
+```
+pending_approval ──approve──▶ approved ──▶ in_progress ──▶ done
+       │                          │             │
+       └──reject──▶ rejected      └─────────────┴──▶ cancelled
+```
+
+**Why the gate exists:** agents handing each other work unsupervised is how a small
+misunderstanding becomes a long, expensive chain of activity nobody asked for. Auto-approve is a
+persisted, visible setting rather than a per-call flag precisely so the human never has to wonder
+whether supervision is currently on.
+
+Two implementation notes worth keeping:
+
+- **Only the two agents involved can move a task.** A third agent marking someone else's work done
+  is not a thing, and the check lives in `setStatus` rather than in each caller.
+- **Changes are narrated as system messages** into the channel the task was raised in. That puts
+  them in the transcript and wakes the relevant agent's long-poll for free — and because system
+  messages do not drive browser peers, a task can never silently spend a claude.ai turn.
+
+### 3.4 Persistence (`store.js`)
 
 Two files under the data directory:
 
@@ -294,7 +330,7 @@ producing `clankercom--win-x64.zip`.
 
 ## 8. Testing (`scripts/check.js`)
 
-30 checks, no test framework.
+56 checks, no test framework.
 
 **The tests drive the real hub through real MCP clients over real HTTP** — two of them, so
 multi-agent behaviour is genuinely exercised rather than mocked. They cover port selection,
@@ -324,7 +360,7 @@ clankercom/
 ├─ src/
 │  ├─ config.js                # constants; version + port resolution, single source
 │  ├─ hub/
-│  │  ├─ bus.js                # agents, channels, messages, mentions, long-polling
+│  │  ├─ bus.js                # agents, channels, messages, groups, long-polling
 │  │  └─ store.js              # append-only JSONL transcript + state snapshot
 │  ├─ mcp/
 │  │  ├─ tool-specs.js         # THE tool surface (name, description, zod schema)
@@ -336,7 +372,7 @@ clankercom/
 │     ├─ turns.js              # per-peer serial turn queue
 │     └─ peer-manager.js       # peers as hub agents; routing both directions
 ├─ scripts/
-│  ├─ check.js                 # end-to-end hub test (30 checks)
+│  ├─ check.js                 # end-to-end hub test (56 checks)
 │  └─ package-zip.js           # release archive
 └─ README.md / RUNNING.md / HANDOFF.md / TECHSTACK.md / TESTING.md / TROUBLESHOOTING.md
 ```
