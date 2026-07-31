@@ -1,7 +1,8 @@
 # Handoff — ClankerCom
 
 What a new Claude instance needs to continue, build, and release this project. Read
-`README.md` first for what it is and why; this file is the operational detail.
+`README.md` first for what it is and why, and `RUNNING.md` for the day-to-day command reference;
+this file is the operational detail behind both.
 
 ## What exists and works
 

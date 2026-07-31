@@ -192,6 +192,10 @@ join, discovery, long-polling, ask/reply, renaming, and persistence across a res
 For UI work, `CLANKER_SCREENSHOT=<path> npx electron .` renders the window, writes a PNG, and
 exits.
 
+Day-to-day commands, environment variables, and the release procedure live in
+[RUNNING.md](RUNNING.md). Operational state and architecture invariants are in
+[HANDOFF.md](HANDOFF.md).
+
 ## Project structure
 
 ```
