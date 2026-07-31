@@ -86,6 +86,13 @@ Run against seeded data so the console is not empty, leaving real history alone:
 CLANKER_DATA_DIR=./tmp-data npm start
 ```
 
+Drive the UI before capturing, to reach a state that needs interaction — and assert on it, since
+the return value is logged:
+
+```bash
+CLANKER_SCREENSHOT_EVAL="document.getElementById('add-peer').click()" CLANKER_SCREENSHOT=peer.png npx electron .
+```
+
 > PowerShell sets env vars differently: `$env:CLANKER_SCREENSHOT = "shot.png"; npx electron .`
 
 ## Tests & checks
@@ -179,7 +186,7 @@ unauthenticated control surface into a network service.
 | `CLANKER_PORT` | app | Preferred hub port. Invalid values warn and fall back to 7777. |
 | `CLANKER_DATA_DIR` | app | Redirect the transcript and state elsewhere. Also isolates the Electron profile and skips the single-instance lock. |
 | `CLANKER_SCREENSHOT` | app | Render the window to this path, then exit |
-| `CLANKER_SCREENSHOT_CLICK` | app | Element id to click before capturing, e.g. `add-peer` |
+| `CLANKER_SCREENSHOT_EVAL` | app | JavaScript to run in the renderer before capturing; its return value is logged |
 | `CLANKER_HUB_URL` | bridge | Point the stdio bridge at a non-default hub |
 | `CLANKER_AGENT` | bridge | Name the Claude Desktop agent without calling `join_hub` |
 

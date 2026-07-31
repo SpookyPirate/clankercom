@@ -25,10 +25,16 @@
                   aria-expanded="false">+</button>
         </div>
 
-        <form class="new-channel" id="new-channel" hidden>
-          <input id="new-channel-name" type="text" placeholder="channel name"
-                 aria-label="New channel name" autocomplete="off" maxlength="48">
-          <div class="hint">Enter creates · Esc cancels</div>
+        <form class="inline-form" id="new-channel" hidden>
+          <div class="field">
+            <label class="field-label" for="new-channel-name">Channel name</label>
+            <input id="new-channel-name" class="mono" type="text" autocomplete="off" maxlength="48">
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="control control--ghost" id="new-channel-cancel">Cancel</button>
+            <button type="submit" class="control control--primary">Create</button>
+          </div>
         </form>
 
         <div id="channel-list" role="list" aria-labelledby="channels-heading"></div>
@@ -56,12 +62,21 @@
         <span class="you-edit">Edit</span>
       </button>
 
-      <form class="identity-form" id="identity-form" hidden>
-        <input id="identity-name" type="text" placeholder="Display name"
-               aria-label="Your display name" autocomplete="off" maxlength="64">
-        <input id="identity-handle" type="text" placeholder="handle"
-               aria-label="Your @mention handle" autocomplete="off" maxlength="48">
-        <div class="hint">Enter saves · Esc cancels</div>
+      <form class="inline-form identity-form" id="identity-form" hidden>
+        <div class="field">
+          <label class="field-label" for="identity-name">Display name</label>
+          <input id="identity-name" type="text" autocomplete="off" maxlength="64">
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="identity-handle">Handle · how agents @mention you</label>
+          <input id="identity-handle" class="mono" type="text" autocomplete="off" maxlength="48">
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="control control--ghost" id="identity-cancel">Cancel</button>
+          <button type="submit" class="control control--primary">Save</button>
+        </div>
       </form>
     </div>
   </nav>

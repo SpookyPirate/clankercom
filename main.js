@@ -137,9 +137,9 @@ function createWindow() {
 /**
  * Wait for the UI to settle, write a PNG, then quit. Dev use only.
  *
- * CLANKER_SCREENSHOT_CLICK runs a click on the given element id first, so
- * states that need interaction — an added browser peer, an open form — can be
- * captured without a human at the keyboard.
+ * CLANKER_SCREENSHOT_EVAL runs arbitrary JavaScript in the renderer first, so
+ * states that need interaction — an added browser peer, a filled-in form —
+ * can be captured and verified without a human at the keyboard.
  */
 function captureAndExit(outputPath) {
   mainWindow.webContents.once('did-finish-load', () => {
@@ -148,11 +148,14 @@ function captureAndExit(outputPath) {
     mainWindow.show();
     mainWindow.focus();
 
-    const clickTarget = process.env.CLANKER_SCREENSHOT_CLICK;
-    if (clickTarget) {
+    const script = process.env.CLANKER_SCREENSHOT_EVAL;
+    if (script) {
       mainWindow.webContents
-        .executeJavaScript(`document.getElementById(${JSON.stringify(clickTarget)})?.click()`)
-        .catch((error) => console.error(`[${APP_NAME}] click failed:`, error.message));
+        .executeJavaScript(script)
+        .then((result) => {
+          if (result !== undefined) console.log(`[${APP_NAME}] eval ->`, result);
+        })
+        .catch((error) => console.error(`[${APP_NAME}] eval failed:`, error.message));
     }
 
     setTimeout(async () => {
