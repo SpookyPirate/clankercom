@@ -6,8 +6,12 @@
  * bridge alike.
  */
 
+// package.json is the single source of truth for the version. Everything that
+// reports one — the MCP server handshake, the bridge, the release zip name —
+// reads from here, so a release is a one-line bump.
+const { version: APP_VERSION } = require('../package.json');
+
 const APP_NAME = 'ClankerCom';
-const APP_VERSION = '2.0.0';
 
 // The hub binds loopback only. Agents run on this machine; there is no
 // network auth layer because there is no network exposure.

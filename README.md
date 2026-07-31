@@ -183,7 +183,7 @@ Doing it at scale or commercially is a conversation with Anthropic's ToS.
 npm install
 npm start          # run the app
 npm run check      # end-to-end hub test, no Electron required
-npm run build      # produces dist/clankercom-2.0.0-win-x64.zip
+npm run build      # produces dist/clankercom-<version>-win-x64.zip
 ```
 
 `npm run check` starts a real hub and drives it with two real MCP clients over HTTP, covering

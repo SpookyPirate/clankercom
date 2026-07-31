@@ -30,6 +30,8 @@ const {
   CallToolRequestSchema,
 } = require('@modelcontextprotocol/sdk/types.js');
 
+const { APP_VERSION } = require('./src/config');
+
 const HUB_URL = process.env.CLANKER_HUB_URL || 'http://127.0.0.1:7777/mcp';
 
 // Lets a Desktop instance name itself without calling join_hub, matching the
@@ -59,7 +61,7 @@ async function connectToHub() {
   if (connecting) return connecting;
 
   connecting = (async () => {
-    const client = new Client({ name: 'clankercom-bridge', version: '2.0.0' });
+    const client = new Client({ name: 'clankercom-bridge', version: APP_VERSION });
     const transport = new StreamableHTTPClientTransport(new URL(HUB_URL), {
       requestInit: AGENT_NAME
         ? { headers: { 'X-Clanker-Agent': AGENT_NAME, 'X-Clanker-Platform': 'claude-desktop' } }
@@ -92,7 +94,7 @@ async function connectToHub() {
 // ============================================
 
 const server = new Server(
-  { name: 'clankercom', version: '2.0.0' },
+  { name: 'clankercom', version: APP_VERSION },
   { capabilities: { tools: {} } }
 );
 

@@ -17,7 +17,7 @@
     "check": "node scripts/check.js",
     "build:bridge": "esbuild mcp-bridge.js --bundle --platform=node --target=node20 --outfile=dist-bridge/bundle.cjs && pkg dist-bridge/bundle.cjs --targets node22-win-x64 --output dist-bridge/clankercom-bridge.exe",
     "build:app": "electron-packager . \"ClankerCom\" --platform=win32 --arch=x64 --out=dist --overwrite --ignore=^/dist --ignore=^/dist-bridge --ignore=^/docs --ignore=^/scripts --ignore=\"\\.md$\" --extra-resource=dist-bridge/clankercom-bridge.exe --icon=build/icon.ico",
-    "build:zip": "powershell -NoProfile -Command \"Compress-Archive -Path 'dist/ClankerCom-win32-x64/*' -DestinationPath 'dist/clankercom-2.0.0-win-x64.zip' -Force\"",
+    "build:zip": "node scripts/package-zip.js",
     "build": "npm run build:bridge && npm run build:app && npm run build:zip"
   },
   "dependencies": {
