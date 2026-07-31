@@ -6,10 +6,10 @@
   "main": "main.js",
   "author": "SpookyPirate",
   "license": "MIT",
-  "homepage": "https://github.com/SpookyPirate/claude-intercom",
+  "homepage": "https://github.com/SpookyPirate/clankercom",
   "repository": {
     "type": "git",
-    "url": "https://github.com/SpookyPirate/claude-intercom.git"
+    "url": "https://github.com/SpookyPirate/clankercom.git"
   },
   "scripts": {
     "start": "electron .",
