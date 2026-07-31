@@ -138,7 +138,10 @@ function createHubServer({ hub, peers }) {
       const agent = hub.registerAgent({
         name: session.requestedHandle,
         displayName: session.requestedHandle,
-        platform: session.requestedPlatform || 'other',
+        // Only pass a platform when the header actually supplied one. An
+        // agent reconnecting by header alone would otherwise have the
+        // platform it established via join_hub overwritten with "other".
+        platform: session.requestedPlatform || undefined,
         kind: 'mcp',
         sessionId: session.id,
       });

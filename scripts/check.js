@@ -247,6 +247,36 @@ async function runScenario(url, hub) {
   const answer = await asking;
   check('ask resolves with the reply', answer.includes('Got it, on it now'), answer);
 
+  // ---- reconnecting by header must not overwrite an established profile ----
+  const headerClient = new Client({ name: 'claude-code', version: '1.0.0' });
+  await headerClient.connect(
+    new StreamableHTTPClientTransport(new URL(url), {
+      requestInit: { headers: { 'X-Clanker-Agent': 'ClankerCom Lead Agent' } },
+    })
+  );
+  const afterHeader = hub.getAgentByHandle('clankercom-lead-agent');
+  check(
+    'reconnecting by header keeps the platform set at join_hub',
+    afterHeader?.platform === 'claude-code',
+    `platform is now "${afterHeader?.platform}"`
+  );
+
+  const headerPlatform = new Client({ name: 'x', version: '1.0.0' });
+  await headerPlatform.connect(
+    new StreamableHTTPClientTransport(new URL(url), {
+      requestInit: {
+        headers: { 'X-Clanker-Agent': 'Header Named Agent', 'X-Clanker-Platform': 'grok' },
+      },
+    })
+  );
+  check(
+    'X-Clanker-Platform is honoured on connect',
+    hub.getAgentByHandle('header-named-agent')?.platform === 'grok',
+    `platform is "${hub.getAgentByHandle('header-named-agent')?.platform}"`
+  );
+  await headerClient.close();
+  await headerPlatform.close();
+
   // ---- renaming mid-conversation ----
   console.log('\nidentity changes');
   const renamed = await call(research, 'set_identity', { name: 'Research — Vector DB Options' });

@@ -380,6 +380,107 @@ button {
   color: var(--ink-faint);
 }
 
+/* ---- Your own identity, pinned to the bottom of the rail ----
+   Placed where an account control conventionally lives, so it reads as
+   "you" rather than as another roster entry. */
+
+.rail-footer {
+  border-top: 1px solid var(--line);
+  padding: var(--s2) var(--s2) var(--s3);
+}
+
+.you {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: var(--s2);
+  width: 100%;
+  padding: var(--s2);
+  border-radius: var(--radius);
+  text-align: left;
+  transition: background-color 120ms var(--ease);
+}
+
+.you:hover {
+  background: var(--state-hover);
+}
+
+.you-text {
+  min-width: 0;
+}
+
+.you-name {
+  display: block;
+  font-size: var(--t-ui);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.you-handle {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.you-edit {
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.you:hover .you-edit {
+  color: var(--signal-bright);
+}
+
+.identity-form[hidden] {
+  display: none;
+}
+
+.identity-form {
+  padding: var(--s2) var(--s2) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.identity-form input {
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--s2);
+  background: var(--void);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-size: var(--t-small);
+}
+
+.identity-form input:last-of-type {
+  font-family: var(--font-mono);
+}
+
+.identity-form input::placeholder {
+  color: var(--ink-faint);
+}
+
+.identity-form input:focus {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--signal-glow);
+}
+
+.identity-form .hint {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
 /* ============================================
    Roster
    ============================================ */

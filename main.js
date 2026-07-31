@@ -33,9 +33,19 @@ let humanAgent = null;
 // Single instance
 // ============================================
 
-// Two instances would share one data directory and interleave writes into the
-// same message log, so the second is turned away and focuses the first.
-if (!app.requestSingleInstanceLock()) {
+// Two instances sharing one data directory would interleave writes into the
+// same message log, so the second is normally turned away and focuses the
+// first.
+//
+// An instance given an explicit CLANKER_DATA_DIR has its own log and its own
+// Electron profile, so there is nothing to protect and the lock is skipped —
+// which is what makes it possible to run a scratch instance for UI work while
+// the real one stays open.
+const isolatedDataDir = process.env.CLANKER_DATA_DIR;
+
+if (isolatedDataDir) {
+  app.setPath('userData', path.join(isolatedDataDir, 'electron-profile'));
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
@@ -124,13 +134,26 @@ function createWindow() {
   });
 }
 
-/** Wait for the UI to settle, write a PNG, then quit. Dev use only. */
+/**
+ * Wait for the UI to settle, write a PNG, then quit. Dev use only.
+ *
+ * CLANKER_SCREENSHOT_CLICK runs a click on the given element id first, so
+ * states that need interaction — an added browser peer, an open form — can be
+ * captured without a human at the keyboard.
+ */
 function captureAndExit(outputPath) {
   mainWindow.webContents.once('did-finish-load', () => {
     // The window must be visible and painted before capturePage returns
     // pixels; capturing an unshown window yields an empty image.
     mainWindow.show();
     mainWindow.focus();
+
+    const clickTarget = process.env.CLANKER_SCREENSHOT_CLICK;
+    if (clickTarget) {
+      mainWindow.webContents
+        .executeJavaScript(`document.getElementById(${JSON.stringify(clickTarget)})?.click()`)
+        .catch((error) => console.error(`[${APP_NAME}] click failed:`, error.message));
+    }
 
     setTimeout(async () => {
       try {
@@ -174,6 +197,13 @@ ipcMain.handle('hub:createChannel', async (_event, { name, topic }) => {
   const channel = hub.createChannel({ name, topic, createdBy: humanAgent.id });
   hub.joinChannel(humanAgent.id, channel.id);
   return hub.publicChannel(channel);
+});
+
+// Your own name, changeable from the console the same way an agent changes
+// its own with set_identity.
+ipcMain.handle('hub:setIdentity', async (_event, { name, handle }) => {
+  const agent = hub.updateIdentity(humanAgent.id, { name, handle });
+  return hub.publicAgent(agent);
 });
 
 ipcMain.handle('hub:openDm', async (_event, { handle }) => {

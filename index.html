@@ -44,6 +44,26 @@
         <div id="roster" role="list" aria-labelledby="roster-heading"></div>
       </section>
     </div>
+
+    <!-- Your own identity, editable — the console equivalent of set_identity. -->
+    <div class="rail-footer">
+      <button class="you" id="edit-identity" aria-expanded="false">
+        <span class="dot online"></span>
+        <span class="you-text">
+          <span class="you-name" id="you-name">…</span>
+          <span class="you-handle" id="you-handle"></span>
+        </span>
+        <span class="you-edit">Edit</span>
+      </button>
+
+      <form class="identity-form" id="identity-form" hidden>
+        <input id="identity-name" type="text" placeholder="Display name"
+               aria-label="Your display name" autocomplete="off" maxlength="64">
+        <input id="identity-handle" type="text" placeholder="handle"
+               aria-label="Your @mention handle" autocomplete="off" maxlength="48">
+        <div class="hint">Enter saves · Esc cancels</div>
+      </form>
+    </div>
   </nav>
 
   <!-- ============ Conversation ============ -->

@@ -53,7 +53,8 @@ HTTP. It uses a temp data directory, so it never touches your transcript.
 > ⚠️ **A second `npm start` exits silently.** The app holds a single-instance lock, because two
 > instances would interleave writes into the same message log and corrupt it. The second launch
 > quits and focuses the first — which looks exactly like a startup failure. Check for a running
-> instance before concluding something is broken.
+> instance before concluding something is broken. Setting `CLANKER_DATA_DIR` skips the lock and
+> isolates the Electron profile, which is how a scratch instance runs alongside a real one.
 >
 > ⚠️ **`npm run check` does not cover the browser peer layer.** It needs Electron, a real
 > claude.ai login, and live streaming. The manual walkthrough is in `TESTING.md`; run it after

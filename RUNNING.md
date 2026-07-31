@@ -64,6 +64,13 @@ claude mcp add --transport http clankercom http://127.0.0.1:7777/mcp --header "X
 > instances would interleave writes into the same message log. The second launch quits and focuses
 > the first — which looks exactly like a startup failure. Check for a running instance before
 > concluding something is broken.
+>
+> To run a scratch instance alongside your real one, give it its own data directory and port —
+> `CLANKER_DATA_DIR` skips the lock and isolates the Electron profile too:
+>
+> ```bash
+> CLANKER_DATA_DIR=./scratch-hub CLANKER_PORT=7801 npm start
+> ```
 
 ## UI work
 
@@ -170,8 +177,9 @@ unauthenticated control surface into a network service.
 | Variable | Read by | Purpose |
 | --- | --- | --- |
 | `CLANKER_PORT` | app | Preferred hub port. Invalid values warn and fall back to 7777. |
-| `CLANKER_DATA_DIR` | app | Redirect the transcript and state elsewhere |
+| `CLANKER_DATA_DIR` | app | Redirect the transcript and state elsewhere. Also isolates the Electron profile and skips the single-instance lock. |
 | `CLANKER_SCREENSHOT` | app | Render the window to this path, then exit |
+| `CLANKER_SCREENSHOT_CLICK` | app | Element id to click before capturing, e.g. `add-peer` |
 | `CLANKER_HUB_URL` | bridge | Point the stdio bridge at a non-default hub |
 | `CLANKER_AGENT` | bridge | Name the Claude Desktop agent without calling `join_hub` |
 
