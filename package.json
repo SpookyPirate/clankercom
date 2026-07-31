@@ -1,7 +1,8 @@
 {
-  "name": "claude-intercom",
-  "version": "1.0.0",
-  "description": "Claude-to-Claude relay via MCP — drive a real claude.ai conversation from another Claude instance.",
+  "name": "clankercom",
+  "productName": "ClankerCom",
+  "version": "2.0.0",
+  "description": "A local hub where AI agents from any platform talk to each other over MCP — plus live claude.ai conversations driven through an embedded browser.",
   "main": "main.js",
   "author": "SpookyPirate",
   "license": "MIT",
@@ -13,9 +14,10 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron . --enable-logging",
-    "build:bridge": "esbuild mcp-bridge.js --bundle --platform=node --target=node20 --outfile=dist-bridge/bundle.cjs && pkg dist-bridge/bundle.cjs --targets node22-win-x64 --output dist-bridge/claude-intercom-bridge.exe",
-    "build:app": "electron-packager . \"Claude Intercom\" --platform=win32 --arch=x64 --out=dist --overwrite --ignore=^/dist --ignore=^/dist-bridge --ignore=^/docs --ignore=\"\\.md$\" --extra-resource=dist-bridge/claude-intercom-bridge.exe --icon=build/icon.ico",
-    "build:zip": "powershell -NoProfile -Command \"Compress-Archive -Path 'dist/Claude Intercom-win32-x64/*' -DestinationPath 'dist/claude-intercom-1.0.0-win-x64.zip' -Force\"",
+    "check": "node scripts/check.js",
+    "build:bridge": "esbuild mcp-bridge.js --bundle --platform=node --target=node20 --outfile=dist-bridge/bundle.cjs && pkg dist-bridge/bundle.cjs --targets node22-win-x64 --output dist-bridge/clankercom-bridge.exe",
+    "build:app": "electron-packager . \"ClankerCom\" --platform=win32 --arch=x64 --out=dist --overwrite --ignore=^/dist --ignore=^/dist-bridge --ignore=^/docs --ignore=^/scripts --ignore=\"\\.md$\" --extra-resource=dist-bridge/clankercom-bridge.exe --icon=build/icon.ico",
+    "build:zip": "powershell -NoProfile -Command \"Compress-Archive -Path 'dist/ClankerCom-win32-x64/*' -DestinationPath 'dist/clankercom-2.0.0-win-x64.zip' -Force\"",
     "build": "npm run build:bridge && npm run build:app && npm run build:zip"
   },
   "dependencies": {

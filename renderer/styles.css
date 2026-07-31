@@ -1,0 +1,897 @@
+/**
+ * styles.css — ClankerCom console.
+ *
+ * Visual direction: a night-shift comms console. The product is a radio net
+ * for agents, so the interface borrows that vernacular — call signs, channels,
+ * transmission state, traffic. Monospace carries every piece of identity and
+ * telemetry; proportional type is reserved for what people actually say.
+ *
+ * Colour discipline: near-black surfaces with exactly one accent (signal
+ * blue). Presence dots are the only other coloured elements, so status reads
+ * instantly and the accent never competes for attention.
+ *
+ * Every value below comes from a token. No arbitrary hex or px in components.
+ */
+
+/* ============================================
+   Tokens
+   ============================================ */
+
+:root {
+  /* --- Surfaces: near-black with a cold blue cast, not neutral grey.
+         The cast is what makes the blue accent feel native to the surface
+         rather than pasted onto it. --- */
+  --void: #0a0c10;
+  --panel: #11151c;
+  --raised: #171c26;
+  --line: #222a36;
+  --line-strong: #2e3847;
+
+  /* --- Text ramp. Every step here meets WCAG AA (4.5:1) against --void,
+         including the faintest, because it carries timestamps and sequence
+         numbers. --ink-ghost is for non-text decoration only. --- */
+  --ink: #dce3ed;         /* 15.2:1 */
+  --ink-dim: #9aa6b8;     /*  7.9:1 */
+  --ink-faint: #7b8698;   /*  5.3:1 */
+  --ink-ghost: #4c5666;   /* decoration only — never readable text */
+
+  /* --- The single accent. --- */
+  --signal: #3b82f6;
+  --signal-bright: #7aacff;
+  --signal-glow: rgba(59, 130, 246, 0.14);
+
+  /* --- Presence. The only other colour on the page. --- */
+  --live: #34d399;
+  --standby: #fbbf24;
+
+  /* --- State layers. Every hover/active is derived from these two values
+         rather than hand-picked per component, so interaction feels uniform. --- */
+  --state-hover: rgba(255, 255, 255, 0.045);
+  --state-active: rgba(255, 255, 255, 0.08);
+
+  /* --- Type --- */
+  --font-ui: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
+
+  --t-micro: 10px;   /* section headings, call signs */
+  --t-meta: 11px;    /* timestamps, sequence numbers, telemetry */
+  --t-small: 12px;   /* secondary controls */
+  --t-ui: 13px;      /* interface text */
+  --t-body: 14px;    /* message bodies — the reading size */
+  --t-title: 15px;   /* channel and brand titles */
+
+  /* --- Spacing: 4px grid --- */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s8: 32px;
+
+  /* --- Geometry --- */
+  --radius: 6px;
+  --radius-sm: 4px;
+  --control-h: 28px;   /* shared by every control in a cluster */
+  --target-min: 24px;  /* minimum interactive target */
+
+  --rail-width: 248px;
+  --peer-width: 560px;
+
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+/* ============================================
+   Base
+   ============================================ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* One focus treatment for everything, so keyboard navigation is legible
+   without each component inventing its own. */
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 5px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--line-strong);
+  background-clip: content-box;
+}
+
+/* ============================================
+   Shared primitives
+   ============================================
+   Controls that sit together share one height, radius, and type treatment.
+   Both button styles route through .control so a cluster never mixes a themed
+   control with a default-styled one. */
+
+.control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  height: var(--control-h);
+  padding: 0 var(--s3);
+  border-radius: var(--radius);
+  font-size: var(--t-small);
+  white-space: nowrap;
+  transition: background-color 120ms var(--ease), border-color 120ms var(--ease),
+    color 120ms var(--ease);
+}
+
+.control:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.control--ghost {
+  color: var(--ink-dim);
+  border: 1px solid var(--line);
+}
+.control--ghost:hover:not(:disabled) {
+  background: var(--state-hover);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.control--ghost:active:not(:disabled) {
+  background: var(--state-active);
+}
+
+.control--primary {
+  background: var(--signal);
+  color: #05070b;
+  font-weight: 600;
+  border: 1px solid var(--signal);
+}
+.control--primary:hover:not(:disabled) {
+  background: var(--signal-bright);
+  border-color: var(--signal-bright);
+}
+.control--primary:active:not(:disabled) {
+  background: var(--signal);
+}
+
+/* Icon-only control, sized to the minimum comfortable target. */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--target-min);
+  height: var(--target-min);
+  border-radius: var(--radius-sm);
+  color: var(--ink-faint);
+  font-size: var(--t-title);
+  line-height: 1;
+  transition: background-color 120ms var(--ease), color 120ms var(--ease);
+}
+.icon-button:hover {
+  background: var(--state-hover);
+  color: var(--signal-bright);
+}
+.icon-button:active {
+  background: var(--state-active);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+/* ============================================
+   Rail
+   ============================================ */
+
+.rail {
+  width: var(--rail-width);
+  flex: 0 0 var(--rail-width);
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.brand {
+  padding: var(--s4) var(--s4) var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand-name {
+  font-family: var(--font-mono);
+  font-size: var(--t-title);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+
+.brand-name b {
+  color: var(--signal);
+  font-weight: 600;
+}
+
+.brand-endpoint {
+  margin-top: var(--s1);
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.rail-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: var(--s4);
+}
+
+.rail-section {
+  margin-top: var(--s5);
+}
+
+.rail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--s3) var(--s1) var(--s4);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  min-height: var(--target-min);
+  padding: var(--s1) var(--s4);
+  text-align: left;
+  font-size: var(--t-ui);
+  color: var(--ink-dim);
+  border-left: 2px solid transparent;
+  transition: background-color 120ms var(--ease), color 120ms var(--ease);
+}
+
+.rail-item:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+
+/* Selection is marked by an edge rule plus a wash — legible without the
+   heavy filled block that would put a second saturated shape on the page. */
+.rail-item.is-active {
+  background: var(--signal-glow);
+  border-left-color: var(--signal);
+  color: var(--ink);
+}
+
+.rail-item .sigil {
+  font-family: var(--font-mono);
+  color: var(--ink-faint);
+}
+
+.rail-item.is-active .sigil {
+  color: var(--signal);
+}
+
+.rail-item .label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail-empty {
+  padding: var(--s1) var(--s4);
+  font-size: var(--t-small);
+  color: var(--ink-faint);
+}
+
+.unread {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  min-width: 18px;
+  text-align: center;
+  padding: 1px var(--s1);
+  border-radius: 9px;
+  background: var(--signal);
+  color: #05070b;
+}
+
+/* ---- Inline channel creation ----
+   A themed inline form rather than a native prompt, which cannot be styled
+   and breaks out of the console entirely. */
+
+.new-channel {
+  padding: var(--s2) var(--s4);
+}
+
+.new-channel[hidden] {
+  display: none;
+}
+
+.new-channel input {
+  width: 100%;
+  height: var(--control-h);
+  padding: 0 var(--s2);
+  background: var(--void);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+}
+
+.new-channel input::placeholder {
+  color: var(--ink-faint);
+}
+
+.new-channel input:focus {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--signal-glow);
+}
+
+.new-channel .hint {
+  margin-top: var(--s1);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
+/* ============================================
+   Roster
+   ============================================ */
+
+.roster-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: var(--s2);
+  width: 100%;
+  min-height: var(--target-min);
+  padding: var(--s1) var(--s4);
+  text-align: left;
+  transition: background-color 120ms var(--ease);
+}
+
+.roster-item:hover {
+  background: var(--state-hover);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 7px;
+  background: var(--ink-ghost);
+}
+.dot.online {
+  background: var(--live);
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.45);
+}
+.dot.away {
+  background: var(--standby);
+}
+
+/* The self-chosen name leads; the @handle sits under it because that is what
+   another agent needs in order to mention them. */
+.roster-name {
+  font-size: var(--t-ui);
+  color: var(--ink-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roster-item:hover .roster-name {
+  color: var(--ink);
+}
+
+.roster-handle {
+  grid-column: 2;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Two-letter call sign in place of an avatar. Platform stays readable at a
+   glance without introducing a second colour to the palette. */
+.callsign {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--s1);
+}
+
+/* ============================================
+   Conversation
+   ============================================ */
+
+.conversation {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--void);
+}
+
+/* Context leads, actions trail — the standard toolbar model. */
+.channel-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s5);
+  border-bottom: 1px solid var(--line);
+}
+
+.channel-name {
+  font-family: var(--font-mono);
+  font-size: var(--t-title);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.channel-topic {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--t-small);
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Signature element: the transmission strip ----
+   A live readout of who currently holds the channel. Idle almost all of the
+   time, which is exactly what makes it mean something when it lights up. */
+
+.net-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s1) var(--s5);
+  min-height: var(--target-min);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
+
+.net-strip.is-live {
+  color: var(--signal-bright);
+  background: linear-gradient(90deg, var(--signal-glow), transparent 60%);
+}
+
+.bars {
+  display: none;
+  align-items: flex-end;
+  gap: 2px;
+  height: 11px;
+}
+
+.net-strip.is-live .bars {
+  display: flex;
+}
+
+.bars i {
+  width: 2px;
+  background: var(--signal);
+  animation: transmit 900ms ease-in-out infinite;
+}
+.bars i:nth-child(1) { height: 4px;  animation-delay: 0ms; }
+.bars i:nth-child(2) { height: 8px;  animation-delay: 120ms; }
+.bars i:nth-child(3) { height: 11px; animation-delay: 240ms; }
+.bars i:nth-child(4) { height: 6px;  animation-delay: 360ms; }
+
+@keyframes transmit {
+  0%, 100% { transform: scaleY(0.35); opacity: 0.55; }
+  50%      { transform: scaleY(1);    opacity: 1; }
+}
+
+/* ---- Transcript ---- */
+
+.transcript {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s4) var(--s5) var(--s6);
+}
+
+.message {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: var(--s3);
+  padding: var(--s1) 0;
+  animation: arrive 200ms var(--ease);
+}
+
+@keyframes arrive {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* The hub's real monotonic sequence number, left gutter. It doubles as the
+   value an agent passes to since_seq, so it is information rather than an
+   ornamental index. */
+.message-seq {
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
+  text-align: right;
+  padding-top: 3px;
+  user-select: all;
+}
+
+.message-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.message-author {
+  font-size: var(--t-ui);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.message-author.is-self {
+  color: var(--signal-bright);
+}
+
+.message-handle,
+.message-time {
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
+}
+
+.message-body {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+}
+
+.message-body code {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px var(--s1);
+}
+
+.message-body pre {
+  margin: var(--s2) 0;
+  padding: var(--s3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--signal);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+.message-body pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+}
+
+.message-body .mention {
+  color: var(--signal-bright);
+  background: var(--signal-glow);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+/* System notices sit quietly beneath the conversation proper. */
+.message.is-system .message-body {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--ink-faint);
+}
+
+.empty-state {
+  padding: var(--s8) var(--s1);
+  color: var(--ink-faint);
+  font-size: var(--t-ui);
+  max-width: 72ch;
+}
+
+/* Prose keeps a comfortable measure; the command block is allowed to run
+   wider so it never has to be scrolled to be read. */
+.empty-state p,
+.empty-state strong {
+  max-width: 52ch;
+}
+
+.empty-state strong {
+  display: block;
+  color: var(--ink-dim);
+  font-weight: 500;
+  margin-bottom: var(--s1);
+}
+
+.empty-state p {
+  margin: 0 0 var(--s2);
+}
+
+.empty-state pre {
+  margin: 0 0 var(--s3);
+  padding: var(--s2) var(--s3);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--signal);
+  border-radius: var(--radius);
+  /* Wrap rather than scroll: a command you have to drag sideways to read is
+     a command you cannot copy with confidence. */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.empty-state code {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--ink-dim);
+  user-select: all;
+}
+
+/* ---- Composer ---- */
+
+.composer {
+  border-top: 1px solid var(--line);
+  padding: var(--s3) var(--s5) var(--s4);
+}
+
+.composer-box {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  transition: border-color 120ms var(--ease), box-shadow 120ms var(--ease);
+}
+
+.composer-box:focus-within {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--signal-glow);
+}
+
+.composer textarea {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  max-height: 200px;
+  padding: 11px var(--s3);
+  border: 0;
+  resize: none;
+  background: none;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--t-body);
+  line-height: 1.5;
+}
+
+.composer textarea:focus {
+  outline: none;
+}
+
+.composer textarea::placeholder {
+  color: var(--ink-faint);
+}
+
+.composer-hint {
+  margin-top: var(--s1);
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-faint);
+}
+
+/* ============================================
+   Peer pane
+   ============================================ */
+
+.peers {
+  width: var(--peer-width);
+  flex: 0 0 var(--peer-width);
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.peers.is-collapsed {
+  width: 0;
+  flex-basis: 0;
+  border-left: 0;
+  overflow: hidden;
+}
+
+/* Tabs scroll rather than wrap, so the strip keeps one row at any width. */
+.peer-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.peer-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  height: var(--control-h);
+  padding: 0 var(--s2);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--ink-dim);
+  white-space: nowrap;
+  transition: background-color 120ms var(--ease), color 120ms var(--ease);
+}
+
+.peer-tab:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+
+.peer-tab.is-active {
+  background: var(--signal-glow);
+  color: var(--signal-bright);
+}
+
+.peer-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+
+.peer-status {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.peer-status.is-locked {
+  color: var(--live);
+}
+
+.peer-stage {
+  flex: 1;
+  position: relative;
+  background: var(--void);
+}
+
+.peer-stage webview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.peer-stage webview[hidden] {
+  display: none;
+}
+
+.peer-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: var(--s6);
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: var(--t-ui);
+}
+
+.peer-placeholder strong {
+  color: var(--ink-dim);
+  font-weight: 500;
+}
+
+/* ============================================
+   Responsive
+   ============================================
+   The window has a 1100px minimum, so this is about graceful degradation on
+   small laptops rather than phone layouts. The peer pane yields space first
+   because the conversation is the primary content. */
+
+@media (max-width: 1400px) {
+  :root {
+    --peer-width: 440px;
+  }
+}
+
+@media (max-width: 1200px) {
+  :root {
+    --peer-width: 380px;
+    --rail-width: 210px;
+  }
+}
+
+/* Below the practical two-column threshold the browser pane is hidden
+   outright; the toggle in the header brings it back on demand. */
+@media (max-width: 1000px) {
+  .peers {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 10;
+    box-shadow: -12px 0 32px rgba(0, 0, 0, 0.5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

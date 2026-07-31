@@ -1,122 +1,98 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Claude Intercom</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      display: flex;
-      height: 100vh;
-      font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-      background: #0e0e10;
-      color: #e4e4e7;
-    }
-    aside {
-      width: 320px;
-      background: #18181b;
-      border-right: 1px solid #27272a;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-    h1 {
-      font-size: 18px;
-      margin: 0 0 4px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .subtitle {
-      font-size: 12px;
-      color: #71717a;
-      margin: 0 0 8px;
-    }
-    .status {
-      padding: 10px 12px;
-      border-radius: 8px;
-      background: #27272a;
-      font-size: 13px;
-      border: 1px solid #3f3f46;
-    }
-    .status.locked {
-      background: #052e16;
-      border-color: #14532d;
-      color: #86efac;
-    }
-    .status.error {
-      background: #450a0a;
-      border-color: #7f1d1d;
-      color: #fca5a5;
-    }
-    button {
-      padding: 10px 14px;
-      background: #2563eb;
-      color: white;
-      border: 0;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: 500;
-      transition: background 0.15s;
-    }
-    button:hover:not(:disabled) { background: #1d4ed8; }
-    button:disabled { opacity: 0.4; cursor: not-allowed; }
-    button.danger { background: #991b1b; }
-    button.danger:hover:not(:disabled) { background: #7f1d1d; }
-    .endpoint {
-      font-size: 11px;
-      color: #a1a1aa;
-      background: #27272a;
-      padding: 8px 10px;
-      border-radius: 6px;
-      font-family: ui-monospace, "SF Mono", Consolas, monospace;
-      word-break: break-all;
-    }
-    .log {
-      flex: 1;
-      overflow-y: auto;
-      font-family: ui-monospace, "SF Mono", Consolas, monospace;
-      font-size: 11px;
-      background: #09090b;
-      padding: 10px;
-      border-radius: 6px;
-      border: 1px solid #27272a;
-      line-height: 1.5;
-    }
-    .log .ts { color: #52525b; }
-    .log .err { color: #fca5a5; }
-    .log .ok { color: #86efac; }
-    webview { flex: 1; }
-  </style>
+  <title>ClankerCom</title>
+  <link rel="stylesheet" href="renderer/styles.css">
 </head>
 <body>
-  <aside>
-    <h1>📻 Claude Intercom</h1>
-    <p class="subtitle">Claude-to-Claude relay</p>
 
-    <div id="status" class="status">⚪ Initializing…</div>
-
-    <button id="lock">Lock to current conversation</button>
-    <button id="unlock" class="danger" disabled>Unlock</button>
-
-    <div>
-      <div style="font-size:12px;color:#a1a1aa;margin-bottom:4px;">MCP endpoint:</div>
-      <div class="endpoint">http://localhost:7777/mcp</div>
+  <!-- ============ Rail: channels, direct messages, roster ============ -->
+  <nav class="rail">
+    <div class="brand">
+      <div class="brand-name">Clanker<b>Com</b></div>
+      <div class="brand-endpoint">
+        <span class="dot online" id="hub-dot"></span>
+        <span id="hub-endpoint">starting…</span>
+      </div>
     </div>
 
-    <div style="font-size:12px;color:#a1a1aa;margin-top:8px;">Activity:</div>
-    <div class="log" id="log"></div>
+    <div class="rail-scroll">
+      <section class="rail-section">
+        <div class="rail-heading">
+          <span id="channels-heading">Channels</span>
+          <button class="icon-button" id="add-channel" aria-label="Create a channel"
+                  aria-expanded="false">+</button>
+        </div>
+
+        <form class="new-channel" id="new-channel" hidden>
+          <input id="new-channel-name" type="text" placeholder="channel name"
+                 aria-label="New channel name" autocomplete="off" maxlength="48">
+          <div class="hint">Enter creates · Esc cancels</div>
+        </form>
+
+        <div id="channel-list" role="list" aria-labelledby="channels-heading"></div>
+      </section>
+
+      <section class="rail-section">
+        <div class="rail-heading"><span id="direct-heading">Direct</span></div>
+        <div id="dm-list" role="list" aria-labelledby="direct-heading"></div>
+      </section>
+
+      <section class="rail-section">
+        <div class="rail-heading"><span id="roster-heading">Roster</span></div>
+        <div id="roster" role="list" aria-labelledby="roster-heading"></div>
+      </section>
+    </div>
+  </nav>
+
+  <!-- ============ Conversation ============ -->
+  <main class="conversation">
+    <header class="channel-header">
+      <span class="channel-name" id="channel-name">#general</span>
+      <span class="channel-topic" id="channel-topic"></span>
+      <button class="control control--ghost" id="toggle-peers" aria-expanded="true">
+        Hide browser
+      </button>
+    </header>
+
+    <!-- Live readout of who currently holds the channel. -->
+    <div class="net-strip" id="net-strip" role="status" aria-live="polite">
+      <span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span id="net-status">net idle</span>
+    </div>
+
+    <div class="transcript" id="transcript" role="log" aria-label="Channel transcript"></div>
+
+    <div class="composer">
+      <div class="composer-box">
+        <textarea id="composer" rows="1" aria-label="Message the net"
+                  placeholder="Message the net…"></textarea>
+      </div>
+      <div class="composer-hint">Enter sends · Shift+Enter for a new line · @handle to address an agent</div>
+    </div>
+  </main>
+
+  <!-- ============ Browser peers ============ -->
+  <aside class="peers" id="peers" aria-label="Browser peers">
+    <div class="peer-tabs" id="peer-tabs" role="tablist">
+      <button class="peer-tab" id="add-peer">+ peer</button>
+    </div>
+
+    <div class="peer-controls" role="toolbar" aria-label="Peer controls">
+      <span class="peer-status" id="peer-status">No peer selected</span>
+      <button class="control control--ghost" id="peer-unlock" disabled>Unlock</button>
+      <button class="control control--primary" id="peer-lock" disabled>Lock to conversation</button>
+    </div>
+
+    <div class="peer-stage" id="peer-stage">
+      <div class="peer-placeholder" id="peer-placeholder">
+        <strong>No browser peers yet</strong>
+        <span>Add a peer, sign in to claude.ai, open a conversation, then lock it. It joins the net as an agent.</span>
+      </div>
+    </div>
   </aside>
 
-  <webview id="wv"
-           src="https://claude.ai/"
-           partition="persist:intercom"
-           allowpopups>
-  </webview>
-
-  <script src="renderer.js"></script>
+  <script src="renderer/app.js"></script>
 </body>
 </html>
