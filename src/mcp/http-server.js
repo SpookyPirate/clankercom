@@ -25,7 +25,14 @@ const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const { isInitializeRequest } = require('@modelcontextprotocol/sdk/types.js');
 
-const { APP_NAME, APP_VERSION, HUB_HOST, DEFAULT_PORT, PORT_SCAN_LIMIT } = require('../config');
+const {
+  APP_NAME,
+  APP_VERSION,
+  HUB_HOST,
+  DEFAULT_PORT,
+  PORT_IS_EXPLICIT,
+  PORT_SCAN_LIMIT,
+} = require('../config');
 const { TOOL_SPECS } = require('./tool-specs');
 const { handlers } = require('./handlers');
 
@@ -201,8 +208,13 @@ function createHubServer({ hub, peers }) {
   // ============================================
 
   /**
-   * Bind the first free port at or above the default, so a second instance
-   * starts cleanly instead of dying with EADDRINUSE.
+   * Bind the hub's port.
+   *
+   * With the default port, scan upward when it is taken so a second instance
+   * starts cleanly instead of dying with EADDRINUSE. With an explicitly
+   * requested CLANKER_PORT, fail loudly instead — quietly binding a different
+   * port would leave every client configured for the requested one unable to
+   * connect, which is far harder to diagnose than a refusal to start.
    */
   function listen() {
     return new Promise((resolve, reject) => {
@@ -216,12 +228,27 @@ function createHubServer({ hub, peers }) {
         });
 
         httpServer.on('error', (error) => {
-          if (error.code === 'EADDRINUSE' && attempt < PORT_SCAN_LIMIT) {
-            attempt++;
-            tryPort(port + 1);
-            return;
+          if (error.code !== 'EADDRINUSE') return reject(error);
+
+          if (PORT_IS_EXPLICIT) {
+            return reject(
+              new Error(
+                `CLANKER_PORT=${port} is already in use. Free it, or set a different ` +
+                  `CLANKER_PORT. (Unset it to let the hub pick a free port automatically.)`
+              )
+            );
           }
-          reject(error);
+
+          if (attempt < PORT_SCAN_LIMIT) {
+            attempt++;
+            return tryPort(port + 1);
+          }
+
+          reject(
+            new Error(
+              `No free port between ${DEFAULT_PORT} and ${DEFAULT_PORT + PORT_SCAN_LIMIT}.`
+            )
+          );
         });
       };
 

@@ -1,8 +1,9 @@
 # Handoff — ClankerCom
 
-What a new Claude instance needs to continue, build, and release this project. Read
-`README.md` first for what it is and why, and `RUNNING.md` for the day-to-day command reference;
-this file is the operational detail behind both.
+What a new Claude instance needs to continue, build, and release this project. Read `README.md`
+first for what it is and why, `RUNNING.md` for the day-to-day command reference, and
+`TECHSTACK.md` for how it is built and why those choices were made; this file is the operational
+state behind all three.
 
 ## What exists and works
 
@@ -36,7 +37,7 @@ disk on demand.
 ```bash
 npm install
 npm start                                   # run the app
-npm run check                               # 26-check hub test, no Electron needed
+npm run check                               # 30-check hub test, no Electron needed
 CLANKER_SCREENSHOT=<path> npx electron .    # render the window to a PNG and exit
 CLANKER_DATA_DIR=<dir> npm start            # run against seeded data, leaving real history alone
 ```

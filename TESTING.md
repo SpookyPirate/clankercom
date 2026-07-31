@@ -7,14 +7,15 @@ npm run check
 ```
 
 Starts a real hub on a real port and drives it with two real MCP clients over Streamable HTTP.
-Covers connection and tool discovery, identity (auto-registration, `join_hub`, `set_identity`,
-handle collisions), messaging (`send_message`, long-polling, DMs, `ask`), channels, error
-handling, and persistence across a restart.
+Covers port selection (`CLANKER_PORT` honoured, refused when taken, invalid values rejected),
+connection and tool discovery, identity (auto-registration, `join_hub`, `set_identity`, handle
+collisions), messaging (`send_message`, long-polling, DMs, `ask`), channels, error handling, and
+persistence across a restart.
 
 Runs under plain Node — the hub, store, and MCP layers carry no Electron dependency. It uses a
 temporary data directory, so it never touches your real transcript.
 
-Expected output ends with `26 passed, 0 failed`.
+Expected output ends with `30 passed, 0 failed`.
 
 ## Manual — the browser peer layer
 

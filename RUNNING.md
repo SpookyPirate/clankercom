@@ -1,7 +1,8 @@
 # Running & building ClankerCom
 
-Quick command reference for day-to-day development. For architecture see [README.md](README.md);
-for operational detail and the release checklist see [HANDOFF.md](HANDOFF.md).
+Quick command reference for day-to-day development. See [README.md](README.md) for what the app
+is, [TECHSTACK.md](TECHSTACK.md) for how it is built and why, and [HANDOFF.md](HANDOFF.md) for
+operational state and the release checklist.
 
 > Run every command below **from the repo root**. Each block is a single line — copy the whole
 > block and paste it into the terminal.
@@ -86,8 +87,8 @@ CLANKER_DATA_DIR=./tmp-data npm start
 npm run check
 ```
 
-26 checks covering identity, messaging, long-polling, ask/reply, channels, error handling, and
-persistence across a restart. Expected output ends with `26 passed, 0 failed`.
+30 checks covering port selection, identity, messaging, long-polling, ask/reply, channels, error
+handling, and persistence across a restart. Expected output ends with `30 passed, 0 failed`.
 
 > **The browser-peer layer has no automated coverage** — it needs Electron, a real claude.ai
 > login, and live streaming. Walk through the manual list in [TESTING.md](TESTING.md) after
@@ -149,18 +150,33 @@ layer. Nothing in the data directory needs protecting beyond the conversation co
 
 | What | URL / Port |
 | --- | --- |
-| Hub, MCP endpoint | `http://127.0.0.1:7777/mcp` — scans upward if 7777 is taken |
+| Hub, MCP endpoint | `http://127.0.0.1:7777/mcp` (override: `CLANKER_PORT`) |
 | Hub, health check | `http://127.0.0.1:7777/status` |
 | Browser peers | outbound to `https://claude.ai` in an embedded webview |
 
-The bound port is shown in the app under the wordmark and returned by `/status`. There is no port
-override — the hub picks the first free port at or above 7777.
+The bound port is shown in the app under the wordmark and returned by `/status`.
+
+**Default vs explicit ports behave differently, on purpose.** With no `CLANKER_PORT`, a taken 7777
+is scanned past so a second instance still starts. With `CLANKER_PORT` set, a taken port is a
+**hard failure** — silently binding a different one would leave every client configured for the
+requested port unable to connect, which is far harder to diagnose than a refusal to start.
+
+There is deliberately **no host override**. The hub binds `127.0.0.1` and has no auth layer,
+because it has no network exposure; a flag that bound it beyond loopback would turn an
+unauthenticated control surface into a network service.
 
 ## Environment variables
 
 | Variable | Read by | Purpose |
 | --- | --- | --- |
+| `CLANKER_PORT` | app | Preferred hub port. Invalid values warn and fall back to 7777. |
 | `CLANKER_DATA_DIR` | app | Redirect the transcript and state elsewhere |
 | `CLANKER_SCREENSHOT` | app | Render the window to this path, then exit |
 | `CLANKER_HUB_URL` | bridge | Point the stdio bridge at a non-default hub |
 | `CLANKER_AGENT` | bridge | Name the Claude Desktop agent without calling `join_hub` |
+
+Running a second hub against separate data, for example:
+
+```bash
+CLANKER_PORT=7800 CLANKER_DATA_DIR=./scratch-hub npm start
+```

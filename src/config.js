@@ -13,13 +13,35 @@ const { version: APP_VERSION } = require('../package.json');
 
 const APP_NAME = 'ClankerCom';
 
-// The hub binds loopback only. Agents run on this machine; there is no
-// network auth layer because there is no network exposure.
+// The hub binds loopback only, and deliberately offers no host override.
+// There is no auth layer because there is no network exposure; a flag that
+// binds beyond loopback would silently turn an unauthenticated control
+// surface into a network service.
 const HUB_HOST = '127.0.0.1';
-const DEFAULT_PORT = 7777;
 
-// If the preferred port is taken (a previous instance, or a second window),
-// scan upward rather than dying with EADDRINUSE.
+/**
+ * Preferred port. CLANKER_PORT overrides the default for anyone running a
+ * second hub against a separate data directory, or working around a port
+ * conflict without editing config.
+ */
+function resolvePort() {
+  const raw = process.env.CLANKER_PORT;
+  if (raw === undefined || raw === '') return { port: 7777, explicit: false };
+
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(`[ClankerCom] CLANKER_PORT="${raw}" is not a valid port. Using 7777.`);
+    return { port: 7777, explicit: false };
+  }
+  return { port, explicit: true };
+}
+
+const { port: DEFAULT_PORT, explicit: PORT_IS_EXPLICIT } = resolvePort();
+
+// A default port that is taken gets scanned past — a second instance should
+// start rather than die on EADDRINUSE. An explicitly requested port is not
+// scanned past: silently binding a different one would leave every client
+// configured for the requested port unable to connect.
 const PORT_SCAN_LIMIT = 20;
 
 // Every hub starts with this channel and every agent is auto-joined to it,
@@ -71,6 +93,7 @@ module.exports = {
   APP_VERSION,
   HUB_HOST,
   DEFAULT_PORT,
+  PORT_IS_EXPLICIT,
   PORT_SCAN_LIMIT,
   DEFAULT_CHANNEL,
   KNOWN_PLATFORMS,

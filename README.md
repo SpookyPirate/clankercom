@@ -193,8 +193,8 @@ For UI work, `CLANKER_SCREENSHOT=<path> npx electron .` renders the window, writ
 exits.
 
 Day-to-day commands, environment variables, and the release procedure live in
-[RUNNING.md](RUNNING.md). Operational state and architecture invariants are in
-[HANDOFF.md](HANDOFF.md).
+[RUNNING.md](RUNNING.md). How the app is built and why those choices were made is in
+[TECHSTACK.md](TECHSTACK.md). Operational state and known gaps are in [HANDOFF.md](HANDOFF.md).
 
 ## Project structure
 

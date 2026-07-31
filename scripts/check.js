@@ -12,6 +12,7 @@
  */
 
 const fs = require('fs');
+const net = require('net');
 const os = require('os');
 const path = require('path');
 
@@ -59,7 +60,98 @@ const call = (client, name, args = {}) =>
 // Test run
 // ============================================
 
+// ============================================
+// Port selection
+// ============================================
+
+/**
+ * CLANKER_PORT behaviour. Makes no assumption about which ports are free
+ * beyond the one high port it squats itself — a developer's own hub is very
+ * often already on 7777, and a test that assumes otherwise fails for the
+ * wrong reason.
+ */
+async function verifyPortSelection() {
+  console.log('port selection');
+
+  const freePort = await findFreePort();
+
+  const honoured = await bootAndBind(String(freePort));
+  check(`honours an explicit free port (${freePort})`, honoured.port === freePort, `got ${honoured.port}`);
+
+  const squatter = await squat(freePort);
+  const refused = await bootAndBind(String(freePort));
+  check(
+    'refuses an explicit port that is taken rather than silently scanning',
+    !!refused.error && /already in use/.test(refused.error.message),
+    refused.port ? `silently bound ${refused.port}` : refused.error?.message
+  );
+  squatter.close();
+
+  const garbage = await bootAndBind('banana');
+  check(
+    'an invalid CLANKER_PORT falls back to default scanning',
+    !garbage.error && garbage.port >= 7777,
+    garbage.error?.message || `got ${garbage.port}`
+  );
+
+  const unset = await bootAndBind(null);
+  check(
+    'unset CLANKER_PORT binds the default or scans past a conflict',
+    !unset.error && unset.port >= 7777,
+    unset.error?.message || `got ${unset.port}`
+  );
+}
+
+/** Ask the OS for a port, then release it. */
+function findFreePort() {
+  return new Promise((resolve) => {
+    const probe = net.createServer().listen(0, '127.0.0.1');
+    probe.on('listening', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+function squat(port) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer().listen(port, '127.0.0.1');
+    server.on('listening', () => resolve(server));
+    server.on('error', reject);
+  });
+}
+
+/** Boot a throwaway hub under a given CLANKER_PORT and report what it bound. */
+async function bootAndBind(portValue) {
+  if (portValue === null) delete process.env.CLANKER_PORT;
+  else process.env.CLANKER_PORT = portValue;
+
+  // config.js reads the environment at load time, so both it and its
+  // dependents have to be re-required for a new value to take effect.
+  for (const moduleName of ['../src/config', '../src/mcp/http-server']) {
+    delete require.cache[require.resolve(moduleName)];
+  }
+  const { createHubServer: freshServer } = require('../src/mcp/http-server');
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-port-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  try {
+    const { httpServer, port } = await freshServer({ hub, peers: null }).listen();
+    await new Promise((resolve) => httpServer.close(resolve));
+    return { port };
+  } catch (error) {
+    return { error };
+  } finally {
+    await store.close();
+  }
+}
+
 async function main() {
+  await verifyPortSelection();
+
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-check-'));
   console.log(`\nClankerCom hub check\ndata dir: ${dataDir}\n`);
 
