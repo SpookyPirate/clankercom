@@ -13,7 +13,7 @@
 
 const os = require('os');
 const path = require('path');
-const { app, BrowserWindow, ipcMain, webContents, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, webContents, shell } = require('electron');
 
 const { APP_NAME, DEFAULT_CHANNEL } = require('./src/config');
 const { Store } = require('./src/hub/store');
@@ -105,13 +105,21 @@ function forwardHubEvents() {
 }
 
 function createWindow() {
+  // No application menu: File/Edit/View/Window/Help are stock Electron chrome
+  // that has nothing to do with this app, and a frameless window would still
+  // surface them via Alt.
+  Menu.setApplicationMenu(null);
+
   mainWindow = new BrowserWindow({
     width: 1600,
     height: 980,
     minWidth: 1100,
     minHeight: 700,
     title: APP_NAME,
-    backgroundColor: '#0b0d12',
+    // Frameless, with the title bar drawn by the renderer so it matches the
+    // console rather than the operating system.
+    frame: false,
+    backgroundColor: '#0a0c10',
     icon: path.join(__dirname, 'build', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -136,6 +144,25 @@ function createWindow() {
     }
     return { action: 'allow' };
   });
+
+  // The default menu carried reload and devtools accelerators; removing it
+  // takes those with it, so the two worth keeping are rebound here.
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyDown') return;
+    const devtools = input.key === 'F12' || (input.control && input.shift && input.key === 'I');
+    if (devtools) mainWindow.webContents.toggleDevTools();
+    if (input.control && input.key.toLowerCase() === 'r') mainWindow.webContents.reload();
+  });
+
+  // The title bar draws its own maximize/restore control, so it needs to know
+  // which state the window is actually in.
+  const reportWindowState = () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window:state', { maximized: mainWindow.isMaximized() });
+    }
+  };
+  mainWindow.on('maximize', reportWindowState);
+  mainWindow.on('unmaximize', reportWindowState);
 }
 
 /**
@@ -227,6 +254,22 @@ ipcMain.handle('hub:joinChannel', async (_event, { channel, handle }) => {
   if (!agent) throw new Error(`unknown agent: ${handle}`);
   return hub.publicChannel(hub.joinChannel(agent.id, channel));
 });
+
+// ============================================
+// IPC — window controls
+// ============================================
+
+ipcMain.handle('window:minimize', async () => mainWindow?.minimize());
+
+ipcMain.handle('window:toggleMaximize', async () => {
+  if (!mainWindow) return false;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize();
+  else mainWindow.maximize();
+  return mainWindow.isMaximized();
+});
+
+ipcMain.handle('window:close', async () => mainWindow?.close());
+ipcMain.handle('window:isMaximized', async () => mainWindow?.isMaximized() ?? false);
 
 // ============================================
 // IPC — groups and roster management

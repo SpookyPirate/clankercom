@@ -7,6 +7,33 @@
 </head>
 <body>
 
+  <!-- ============ Title bar ============
+       Drawn here rather than by the OS, so the window frame matches the
+       console. The drag region gives back native move, snap, and
+       double-click-to-maximize. -->
+  <header class="titlebar">
+    <div class="titlebar-drag">
+      <span class="titlebar-mark">◈</span>
+      <span class="titlebar-name">ClankerCom</span>
+    </div>
+
+    <div class="window-controls">
+      <button class="window-control" id="win-minimize" aria-label="Minimize">
+        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5h10" /></svg>
+      </button>
+      <button class="window-control" id="win-maximize" aria-label="Maximize">
+        <svg viewBox="0 0 10 10" aria-hidden="true" id="win-maximize-icon">
+          <rect x="0.5" y="0.5" width="9" height="9" />
+        </svg>
+      </button>
+      <button class="window-control window-control--close" id="win-close" aria-label="Close">
+        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0l10 10M10 0L0 10" /></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="workspace">
+
   <!-- ============ Rail: channels, direct messages, roster ============ -->
   <nav class="rail">
     <div class="brand">
@@ -164,6 +191,8 @@
       </div>
     </div>
   </aside>
+
+  </div><!-- /.workspace -->
 
   <!-- ============ Group settings ============
        A modal rather than inline controls: group configuration is expected to

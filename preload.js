@@ -11,6 +11,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Bus events the renderer may subscribe to, allow-listed so a compromised
 // renderer cannot attach to arbitrary IPC channels.
 const SUBSCRIBABLE_EVENTS = [
+  'window:state',
   'hub:message',
   'hub:agent',
   'hub:agentRemoved',
@@ -22,6 +23,12 @@ const SUBSCRIBABLE_EVENTS = [
 ];
 
 contextBridge.exposeInMainWorld('clanker', {
+  // ---- window controls (the title bar is drawn by the renderer) ----
+  minimize: () => ipcRenderer.invoke('window:minimize'),
+  toggleMaximize: () => ipcRenderer.invoke('window:toggleMaximize'),
+  closeWindow: () => ipcRenderer.invoke('window:close'),
+  isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+
   // ---- hub ----
   bootstrap: () => ipcRenderer.invoke('hub:bootstrap'),
   readChannel: (channel, limit) => ipcRenderer.invoke('hub:readChannel', { channel, limit }),

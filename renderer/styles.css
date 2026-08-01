@@ -93,6 +93,7 @@ body {
   margin: 0;
   height: 100vh;
   display: flex;
+  flex-direction: column;
   overflow: hidden;
   background: var(--void);
   color: var(--ink);
@@ -100,6 +101,97 @@ body {
   font-size: var(--t-body);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Everything below the title bar. min-height:0 so the panes inside can scroll
+   rather than stretching the page. */
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* ============================================
+   Title bar
+   ============================================
+   The window is frameless; this replaces the OS chrome. Kept deliberately
+   quiet — it is a frame, not a feature. */
+
+.titlebar {
+  display: flex;
+  align-items: stretch;
+  height: 34px;
+  flex: 0 0 34px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+/* The drag region restores native move, edge snapping, and
+   double-click-to-maximize without any of it being reimplemented. */
+.titlebar-drag {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding-left: var(--s3);
+  min-width: 0;
+  -webkit-app-region: drag;
+}
+
+.titlebar-mark {
+  color: var(--signal);
+  font-size: var(--t-small);
+}
+
+.titlebar-name {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+.window-controls {
+  display: flex;
+  /* Buttons must opt out of the drag region or they cannot be clicked. */
+  -webkit-app-region: no-drag;
+}
+
+.window-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  color: var(--ink-dim);
+  transition: background-color 120ms var(--ease), color 120ms var(--ease);
+}
+
+.window-control svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.1;
+}
+
+.window-control:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+
+.window-control:active {
+  background: var(--state-active);
+}
+
+/* Close is the one control that earns a colour, and only on hover — the
+   Windows convention, in our palette rather than the system's. */
+.window-control--close:hover {
+  background: #a11d1d;
+  color: #fff;
+}
+
+.window-control:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: -2px;
 }
 
 button {
