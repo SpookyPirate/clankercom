@@ -53,9 +53,12 @@
         </button>
       </section>
 
-      <section class="rail-section">
+      <section class="rail-section" data-section="channels">
         <div class="rail-heading">
-          <span id="channels-heading">Channels</span>
+          <button class="rail-disclosure" data-toggle="channels" aria-expanded="true">
+            <svg class="rail-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg><span id="channels-heading">Channels</span>
+            <span class="section-unread" data-unread="channels" hidden></span>
+          </button>
           <button class="icon-button" id="add-channel" aria-label="Create a channel"
                   aria-expanded="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </div>
@@ -72,17 +75,28 @@
           </div>
         </form>
 
-        <div id="channel-list" role="list" aria-labelledby="channels-heading"></div>
+        <div class="rail-body">
+          <div id="channel-list" role="list" aria-labelledby="channels-heading"></div>
+        </div>
       </section>
 
-      <section class="rail-section">
-        <div class="rail-heading"><span id="direct-heading">Direct</span></div>
-        <div id="dm-list" role="list" aria-labelledby="direct-heading"></div>
-      </section>
-
-      <section class="rail-section">
+      <section class="rail-section" data-section="direct">
         <div class="rail-heading">
-          <span id="roster-heading">Roster</span>
+          <button class="rail-disclosure" data-toggle="direct" aria-expanded="true">
+            <svg class="rail-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg><span id="direct-heading">Direct</span>
+            <span class="section-unread" data-unread="direct" hidden></span>
+          </button>
+        </div>
+        <div class="rail-body">
+          <div id="dm-list" role="list" aria-labelledby="direct-heading"></div>
+        </div>
+      </section>
+
+      <section class="rail-section" data-section="roster">
+        <div class="rail-heading">
+          <button class="rail-disclosure" data-toggle="roster" aria-expanded="true">
+            <svg class="rail-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg><span id="roster-heading">Roster</span>
+          </button>
           <button class="icon-button" id="add-group" aria-label="Create a group"
                   aria-expanded="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </div>
@@ -98,7 +112,9 @@
           </div>
         </form>
 
-        <div id="roster" role="list" aria-labelledby="roster-heading"></div>
+        <div class="rail-body">
+          <div id="roster" role="list" aria-labelledby="roster-heading"></div>
+        </div>
       </section>
     </div>
 

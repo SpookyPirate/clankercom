@@ -81,8 +81,17 @@
   --state-hover: rgba(255, 255, 255, 0.055);
   --state-active: rgba(255, 255, 255, 0.09);
 
-  /* ---- Type ---- */
-  --font-ui: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+  /* ---- Type ----
+     Segoe UI Variable ships three optical sizes, and they are not
+     interchangeable: Small is drawn for ~10px, Text for ~16px, Display for
+     ~36px. Display was being used for the whole interface, which runs 10–15px
+     — its counters are tightened and strokes thinned for headline sizes, so
+     every label was set in a face designed to be read several times larger.
+     Text carries the interface; Small carries anything at --t-meta or below,
+     where its opened counters and sturdier strokes actually hold up. */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
+  --font-ui-small: "Segoe UI Variable Small", "Segoe UI Variable Text", "Segoe UI", Inter,
+    system-ui, sans-serif;
   --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
 
   --t-micro: 10px;   /* section headings, call signs */
@@ -469,6 +478,16 @@ button {
   color: var(--ink-dim);
 }
 
+/* Proportional text at or below --t-meta uses the Small optical size, whose
+   counters stay open at that scale. */
+.you-edit,
+.permission-note,
+.modal-section-note,
+.rail-empty,
+.group-heading .count {
+  font-family: var(--font-ui-small);
+}
+
 .switch input:checked ~ .switch-label {
   color: var(--signal-bright);
 }
@@ -555,13 +574,69 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--s3) var(--s1) var(--s4);
+  padding: 0 var(--s3) var(--s1) var(--s2);
   font-family: var(--font-mono);
   font-size: var(--t-micro);
   font-weight: 600;
+  /* All-caps clumps without positive tracking. */
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-faint);
+}
+
+/* The heading is the disclosure control — the convention every chat client
+   shares, because a long roster needs to be foldable without hunting for a
+   separate affordance. */
+.rail-disclosure {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  flex: 1;
+  min-width: 0;
+  padding: var(--s1) var(--s1);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  text-align: left;
+  transition: color var(--t-micro-ms) var(--ease);
+}
+
+.rail-disclosure:hover {
+  color: var(--ink-dim);
+}
+
+.rail-chevron {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform var(--t-micro-ms) var(--ease);
+}
+
+.rail-section.is-collapsed .rail-chevron {
+  transform: rotate(-90deg);
+}
+
+.rail-section.is-collapsed .rail-body {
+  display: none;
+}
+
+/* A collapsed section must still surface anything unread inside it, or folding
+   a section becomes a way to silently miss messages. */
+.rail-heading .section-unread {
+  font-family: var(--font-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  padding: 1px var(--s1);
+  border-radius: 9px;
+  background: var(--signal);
+  color: var(--on-signal);
 }
 
 .rail-item {
@@ -569,8 +644,8 @@ button {
   align-items: center;
   gap: var(--s2);
   width: 100%;
-  min-height: var(--target-min);
-  padding: var(--s1) var(--s4);
+  min-height: 34px;
+  padding: var(--s1) var(--s3);
   text-align: left;
   font-size: var(--t-ui);
   color: var(--ink-dim);
@@ -605,6 +680,15 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.rail-item.has-unread .label {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.rail-item.has-unread .sigil {
+  color: var(--ink-dim);
 }
 
 .rail-empty {
@@ -767,8 +851,8 @@ button {
   align-items: center;
   column-gap: var(--s2);
   width: 100%;
-  min-height: var(--target-min);
-  padding: var(--s1) var(--s4);
+  min-height: 38px;
+  padding: var(--s1) var(--s3);
   text-align: left;
   transition: background-color 120ms var(--ease);
 }
@@ -813,6 +897,15 @@ button {
 
 .roster-item:hover .roster-name {
   color: var(--ink);
+}
+
+.roster-item.is-offline .roster-name,
+.roster-item.is-offline .roster-handle {
+  color: var(--ink-ghost);
+}
+
+.roster-item.is-offline:hover .roster-name {
+  color: var(--ink-dim);
 }
 
 .roster-handle {
@@ -1322,6 +1415,37 @@ button {
 }
 
 .task-group-heading:first-child {
+  margin-top: 0;
+}
+
+/* ---- Day separator ----
+   A rule with the date sitting in it. Without one, a timestamp alone gives no
+   sense of how old a message is once the log runs past a single session. */
+.day-separator {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: var(--s5) 0 var(--s3);
+  color: var(--ink-faint);
+}
+
+.day-separator::before,
+.day-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.day-separator span {
+  font-family: var(--font-ui-small);
+  font-size: var(--t-meta);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.day-separator:first-child {
   margin-top: 0;
 }
 

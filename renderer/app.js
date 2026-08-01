@@ -29,6 +29,7 @@ const state = {
   settings: { autoApproveTasks: false },
   unread: new Map(),   // name -> count
   lastRendered: null,  // anchor for message grouping
+  collapsed: new Set(),// folded rail sections
   peerViews: new Map(),// peerId -> webview element
   activePeerId: null,
 };
@@ -264,6 +265,29 @@ function renderRail() {
   renderChannelGroup(el.dmList, directMessages);
   renderRoster();
   renderTaskBadge();
+  renderSectionUnread();
+}
+
+/**
+ * A folded section still has to surface what is unread inside it, or
+ * collapsing one becomes a way to silently miss messages.
+ */
+function renderSectionUnread() {
+  const channels = Array.from(state.channels.values());
+  const totals = {
+    channels: channels.filter((c) => !c.isDm),
+    direct: channels.filter((c) => c.isDm && dmCounterpart(c)),
+  };
+
+  for (const [key, list] of Object.entries(totals)) {
+    const badge = document.querySelector(`[data-unread="${key}"]`);
+    if (!badge) continue;
+
+    const count = list.reduce((sum, c) => sum + (state.unread.get(c.name) || 0), 0);
+    const show = count > 0 && state.collapsed.has(key);
+    badge.hidden = !show;
+    badge.textContent = count > 99 ? '99+' : String(count);
+  }
 }
 
 function renderChannelGroup(container, channels) {
@@ -272,7 +296,15 @@ function renderChannelGroup(container, channels) {
   for (const channel of channels) {
     const unread = state.unread.get(channel.name) || 0;
     const button = document.createElement('button');
-    button.className = `rail-item${channel.name === state.activeChannel ? ' is-active' : ''}`;
+    // Unread is carried by weight and brightness first; the badge only
+    // confirms it. A badge alone is easy to miss scanning a long list.
+    button.className = [
+      'rail-item',
+      channel.name === state.activeChannel ? 'is-active' : '',
+      unread ? 'has-unread' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
     button.innerHTML = `
       <span class="sigil">${icon(channel.isDm ? 'at' : 'hash')}</span>
       <span class="label">${escapeHtml(channelLabel(channel).replace(/^[#@]/, ''))}</span>
@@ -361,9 +393,13 @@ function renderRosterRow(agent) {
   row.className = 'roster-row';
 
   const button = document.createElement('button');
-  button.className = 'roster-item';
+  button.className = `roster-item${agent.status === 'offline' ? ' is-offline' : ''}`;
   button.setAttribute('role', 'listitem');
-  button.title = agent.description || `${agent.displayName} (@${agent.handle})`;
+  // The status word belongs in the accessible name too, not only in the dot.
+  button.title = `${agent.displayName} (@${agent.handle}) — ${agent.status}${
+    agent.description ? `
+${agent.description}` : ''
+  }`;
 
   // The self-chosen name leads, the @mention handle sits beneath it — a reader
   // needs the name to know who this is and the handle to reply.
@@ -494,11 +530,42 @@ function renderMessage(message, previous) {
   return wrapper;
 }
 
+/** Day label for a separator: Today and Yesterday by name, then the date. */
+function dayLabel(timestamp) {
+  const date = new Date(timestamp);
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 86400000);
+  const sameDay = (a, b) => a.toDateString() === b.toDateString();
+
+  if (sameDay(date, today)) return 'Today';
+  if (sameDay(date, yesterday)) return 'Yesterday';
+  return date.toLocaleDateString([], {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: date.getFullYear() === today.getFullYear() ? undefined : 'numeric',
+  });
+}
+
+function renderDaySeparator(timestamp) {
+  const divider = document.createElement('div');
+  divider.className = 'day-separator';
+  divider.innerHTML = `<span>${escapeHtml(dayLabel(timestamp))}</span>`;
+  return divider;
+}
+
 function appendMessage(message, { scroll = true } = {}) {
   const nearBottom =
     el.transcript.scrollHeight - el.transcript.scrollTop - el.transcript.clientHeight < 120;
 
-  el.transcript.appendChild(renderMessage(message, state.lastRendered));
+  // Without a dated divider, a bare "9:14 AM" is ambiguous across the whole
+  // history and readers consistently misjudge how old something is.
+  const previous = state.lastRendered;
+  const crossedDay =
+    !previous || new Date(previous.ts).toDateString() !== new Date(message.ts).toDateString();
+  if (crossedDay) el.transcript.appendChild(renderDaySeparator(message.ts));
+
+  el.transcript.appendChild(renderMessage(message, crossedDay ? null : previous));
   state.lastRendered = message;
 
   // Only auto-scroll when already reading the live edge, so scrolling back
@@ -1137,6 +1204,45 @@ el.identityForm.addEventListener('submit', async (event) => {
 });
 
 // ============================================
+// Rail sections
+// ============================================
+
+const COLLAPSE_KEY = 'clanker.collapsedSections';
+
+/** Which sections are folded. Remembered, per the navigation standard. */
+function loadCollapsed() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsed() {
+  localStorage.setItem(COLLAPSE_KEY, JSON.stringify(Array.from(state.collapsed)));
+}
+
+function applyCollapsed() {
+  for (const section of document.querySelectorAll('.rail-section[data-section]')) {
+    const key = section.dataset.section;
+    const folded = state.collapsed.has(key);
+    section.classList.toggle('is-collapsed', folded);
+    section.querySelector('.rail-disclosure')?.setAttribute('aria-expanded', String(!folded));
+  }
+}
+
+for (const button of document.querySelectorAll('.rail-disclosure')) {
+  button.onclick = () => {
+    const key = button.dataset.toggle;
+    if (state.collapsed.has(key)) state.collapsed.delete(key);
+    else state.collapsed.add(key);
+    saveCollapsed();
+    applyCollapsed();
+    renderRail();
+  };
+}
+
+// ============================================
 // Group creation
 // ============================================
 
@@ -1260,6 +1366,8 @@ async function start() {
   state.peers = snapshot.peers;
   state.port = snapshot.port;
   state.defaultChannel = snapshot.defaultChannel;
+  state.collapsed = loadCollapsed();
+  applyCollapsed();
   state.groups = snapshot.groups || [];
   state.tasks = snapshot.tasks || [];
   state.settings = snapshot.settings || state.settings;
