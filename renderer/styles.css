@@ -87,19 +87,22 @@
      ~36px. Display was being used for the whole interface, which runs 10–15px
      — its counters are tightened and strokes thinned for headline sizes, so
      every label was set in a face designed to be read several times larger.
-     Text carries the interface; Small carries anything at --t-meta or below,
-     where its opened counters and sturdier strokes actually hold up. */
+     Text carries the interface; Small carries anything at --t-meta, where its
+     opened counters and sturdier strokes actually hold up. */
   --font-ui: "Segoe UI Variable Text", "Segoe UI", Inter, system-ui, -apple-system, sans-serif;
   --font-ui-small: "Segoe UI Variable Small", "Segoe UI Variable Text", "Segoe UI", Inter,
     system-ui, sans-serif;
   --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
 
-  --t-micro: 10px;   /* section headings, call signs */
-  --t-meta: 11px;    /* timestamps, sequence numbers, telemetry */
-  --t-small: 12px;   /* secondary controls */
-  --t-ui: 13px;      /* interface text */
-  --t-body: 14px;    /* message bodies — the reading size */
-  --t-title: 15px;   /* channel and brand titles */
+  /* The scale sat two to three steps under every comparable client: message
+     bodies at 14px against Discord's 16, sidebar items at 13 against 16, and
+     meta at 10–11px, below the 12px floor for readable small text. Sizes below
+     are set against what mature chat clients actually ship. */
+  --t-meta: 12px;    /* timestamps, sequence numbers, headings, badges — the floor */
+  --t-small: 13px;   /* secondary controls, handles */
+  --t-ui: 15px;      /* interface text: rail items, roster, menus, buttons */
+  --t-body: 16px;    /* message bodies — the reading size */
+  --t-title: 17px;   /* channel and brand titles */
 
   /* Line heights by role. Single-line UI must not inherit body leading, or
      controls sit unevenly in their boxes. */
@@ -122,9 +125,9 @@
   --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 10px;
-  --control-h: 28px;   /* shared by every control in a cluster */
-  --target-min: 24px;  /* minimum interactive target */
-  --icon: 16px;        /* one icon size, on the grid */
+  --control-h: 32px;   /* shared by every control in a cluster */
+  --target-min: 28px;  /* minimum interactive target */
+  --icon: 18px;        /* optically matches the x-height of --t-ui */
 
   /* ---- Elevation ----
      Shadows barely register on dark surfaces, so height is carried by a
@@ -132,7 +135,7 @@
   --lift-menu: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 20px -8px rgba(0, 0, 0, 0.6);
   --lift-modal: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 20px 48px -16px rgba(0, 0, 0, 0.65);
 
-  --rail-width: 248px;
+  --rail-width: 268px;
   --peer-width: 560px;
 
   /* ---- Motion ----
@@ -576,7 +579,7 @@ button {
   justify-content: space-between;
   padding: 0 var(--s3) var(--s1) var(--s2);
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   font-weight: 600;
   /* All-caps clumps without positive tracking. */
   letter-spacing: 0.14em;
@@ -631,7 +634,7 @@ button {
    a section becomes a way to silently miss messages. */
 .rail-heading .section-unread {
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   font-weight: 600;
   padding: 1px var(--s1);
   border-radius: 9px;
@@ -644,7 +647,7 @@ button {
   align-items: center;
   gap: var(--s2);
   width: 100%;
-  min-height: 34px;
+  min-height: 38px;
   padding: var(--s1) var(--s3);
   text-align: left;
   font-size: var(--t-ui);
@@ -699,7 +702,7 @@ button {
 
 .unread {
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   font-weight: 600;
   min-width: 18px;
   text-align: center;
@@ -736,7 +739,7 @@ button {
 
 .field-label {
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -817,7 +820,7 @@ button {
 .you-handle {
   display: block;
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   color: var(--ink-faint);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -825,7 +828,7 @@ button {
 }
 
 .you-edit {
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   color: var(--ink-faint);
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -851,10 +854,10 @@ button {
   align-items: center;
   column-gap: var(--s2);
   width: 100%;
-  min-height: 38px;
-  padding: var(--s1) var(--s3);
+  min-height: 46px;
+  padding: var(--s2) var(--s3);
   text-align: left;
-  transition: background-color 120ms var(--ease);
+  transition: background-color var(--t-micro-ms) var(--ease);
 }
 
 .roster-item:hover {
@@ -911,7 +914,7 @@ button {
 .roster-handle {
   grid-column: 2;
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   color: var(--ink-faint);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -924,13 +927,14 @@ button {
   grid-row: 1 / span 2;
   grid-column: 3;
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   font-weight: 600;
   letter-spacing: 0.08em;
   color: var(--ink-faint);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  padding: 1px var(--s1);
+  padding: 2px 5px;
+  transition: opacity var(--t-micro-ms) var(--ease);
 }
 
 /* Group heading inside the roster — quieter than a rail heading, since it
@@ -947,7 +951,7 @@ button {
 
 .group-heading .count {
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   color: var(--ink-faint);
 }
 
@@ -979,9 +983,6 @@ button {
   opacity: 0;
 }
 
-.callsign {
-  transition: opacity 120ms var(--ease);
-}
 
 /* A floating layer, so it reads as sitting above the rail rather than carved
    into it. Inner padding keeps items off the rounded edge; their smaller
@@ -1010,7 +1011,7 @@ button {
 
 .roster-menu .menu-label {
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -1359,7 +1360,7 @@ button {
 
 .task-status {
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   padding: 1px var(--s1);
@@ -1407,7 +1408,7 @@ button {
 
 .task-group-heading {
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -1494,7 +1495,7 @@ button {
 .composer-hint {
   margin-top: var(--s1);
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   color: var(--ink-faint);
 }
 
@@ -1811,7 +1812,7 @@ button {
 .modal-section-title {
   margin: 0 0 var(--s1);
   font-family: var(--font-mono);
-  font-size: var(--t-micro);
+  font-size: var(--t-meta);
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;

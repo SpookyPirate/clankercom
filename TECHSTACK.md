@@ -306,6 +306,15 @@ Every value comes from a token; no arbitrary hex or px in components.
   than being hand-picked per component, and every control has a `:active` press.
 - **One icon set**, drawn on a 24-unit grid at a single stroke width in `currentColor`. Text glyphs
   did this job at first and shift weight, size, and baseline with whatever font resolves.
+- **The type scale is set against what chat clients actually ship**, not by eye. It originally ran
+  two to three steps small — 14px message bodies against Discord's 16, 13px sidebar items against
+  16, and meta text at 10–11px, under the 12px floor for legible small text. Nothing on screen is
+  now below 12px. Geometry moved with it: control height, row heights, icon size, and rail width
+  all grew, or larger text simply crowds its container.
+- **Segoe UI Variable ships three optical sizes and they are not interchangeable** — Small is drawn
+  for ~10px, Text for ~16px, Display for ~36px, and the bare family name does not resolve in a
+  browser at all. The interface was set in Display at 10–15px, which renders perfectly well and is
+  exactly why it survived review: subtly thin and cramped with nothing obviously broken.
 - **Type:** monospace carries every piece of identity and telemetry (handles, sequence numbers,
   channel names, states); proportional type is reserved for what people actually say. Radio logs
   are monospaced — it is true to the subject, not a stylistic tic.
