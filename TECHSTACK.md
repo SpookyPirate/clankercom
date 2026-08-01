@@ -287,15 +287,25 @@ things, which is what makes it fit rather than decorate.
 
 Every value comes from a token; no arbitrary hex or px in components.
 
-- **Surfaces:** `--void` (page) → `--panel` → `--raised`, with `--line` hairlines. Near-black with a
-  cold blue cast, so the accent reads as native to the surface rather than applied to it.
-- **Text ramp:** `--ink` / `--ink-dim` / `--ink-faint`, every step meeting WCAG AA against `--void`
-  — including the faintest, which carries timestamps and sequence numbers. `--ink-ghost` is for
-  non-text decoration only.
-- **Exactly one accent** (`--signal`, blue). Presence dots are the only other coloured elements, so
-  status reads instantly and nothing competes.
+- **Surfaces:** `--void` (page) → `--panel` → `--raised` → `--float` (menus, modals). Near-black
+  with a cold blue cast, so the accent reads as native to the surface rather than applied to it.
+  **Elevation goes lighter, not darker** — on a dark UI, closer to the light reads as closer to the
+  viewer — and height is carried by a lighter surface plus an inset top highlight, because a drop
+  shadow barely registers against near-black.
+- **Hairlines are alpha, not hex** (`rgba(255,255,255,0.075)`). A hardcoded grey breaks the moment
+  the surface beneath it moves; alpha adapts to whatever it sits on.
+- **Text ramp:** `--ink` / `--ink-dim` / `--ink-faint`, every step meeting WCAG AA against
+  `--float`, the *lightest* surface any of them lands on — a step that passes there passes
+  everywhere. `--ink-ghost` is for non-text decoration only. Introducing `--float` originally
+  pushed `--ink-faint` to 4.23:1; the ramp was corrected rather than the surface.
+- **Exactly one accent** (`--signal`, blue), plus semantic triplets (text, tinted surface, border)
+  for ok / warn / danger so a status can carry a whole element rather than only colouring a word.
+- **Presence is shape, not just colour** — solid, half, and hollow dots. Roughly 8% of men cannot
+  separate the hues, so colour is reinforcement rather than the signal.
 - **State layers:** `--state-hover` / `--state-active` derive every interaction uniformly rather
-  than being hand-picked per component.
+  than being hand-picked per component, and every control has a `:active` press.
+- **One icon set**, drawn on a 24-unit grid at a single stroke width in `currentColor`. Text glyphs
+  did this job at first and shift weight, size, and baseline with whatever font resolves.
 - **Type:** monospace carries every piece of identity and telemetry (handles, sequence numbers,
   channel names, states); proportional type is reserved for what people actually say. Radio logs
   are monospaced — it is true to the subject, not a stylistic tic.
@@ -305,6 +315,16 @@ Every value comes from a token; no arbitrary hex or px in components.
 ### 6.2 Conventions worth keeping
 
 - **No native dialogs.** Channel creation is an inline themed form, never `prompt()`.
+- **Failures raise a toast**, never a status strip. The transmission strip reports the state of the
+  net; overloading it with errors made both unreadable. Errors persist until dismissed because the
+  user may need to act; confirmations clear themselves.
+- **Slow actions show it.** Approve, decline, and peer lock swap their label for a spinner in place,
+  keeping the button's width so nothing the user was about to click moves under them.
+- **Consecutive messages from one author group**, collapsing the repeated header. The sequence
+  number stays in the gutter, recessed rather than hidden — a gap in that column reads as a lost
+  message.
+- **Prose is capped at a readable measure.** An uncapped line on a wide window runs past 150
+  characters and the eye loses its place on the return sweep.
 - **Two-letter call signs** (`CC`, `CW`, `AI`, `GK`) stand in for avatars — platform readable at a
   glance without introducing a second colour.
 - **Mentions highlight only real handles.** Prose like "an explicit @mention" reads as prose; a

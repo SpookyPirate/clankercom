@@ -18,38 +18,70 @@
    ============================================ */
 
 :root {
-  /* --- Surfaces: near-black with a cold blue cast, not neutral grey.
-         The cast is what makes the blue accent feel native to the surface
-         rather than pasted onto it. --- */
-  --void: #0a0c10;
-  --panel: #11151c;
-  --raised: #171c26;
-  --line: #222a36;
-  --line-strong: #2e3847;
+  /* ---- Surfaces ----
+     Near-black with a cold blue cast, not neutral grey; the cast is what makes
+     the accent feel native to the surface rather than pasted onto it.
+     Elevation goes *lighter*, not darker — on a dark UI, closer to the light
+     reads as closer to the viewer. */
+  --void: #0a0c10;      /* page */
+  --panel: #11151c;     /* rails, headers */
+  --raised: #171c26;    /* cards, rows at rest */
+  --float: #1d2431;     /* menus, modals — the layer above everything */
 
-  /* --- Text ramp. Every step here meets WCAG AA (4.5:1) against --void,
-         including the faintest, because it carries timestamps and sequence
-         numbers. --ink-ghost is for non-text decoration only. --- */
-  --ink: #dce3ed;         /* 15.2:1 */
-  --ink-dim: #9aa6b8;     /*  7.9:1 */
-  --ink-faint: #7b8698;   /*  5.3:1 */
-  --ink-ghost: #4c5666;   /* decoration only — never readable text */
+  /* ---- Hairlines ----
+     Defined by alpha against whatever they sit on, so they survive a change of
+     surface. A hardcoded grey breaks the moment the background moves. */
+  --line: rgba(255, 255, 255, 0.075);
+  --line-strong: rgba(255, 255, 255, 0.14);
+  --line-faint: rgba(255, 255, 255, 0.045);
 
-  /* --- The single accent. --- */
+  /* ---- Text ramp ----
+     Every step meets WCAG AA (4.5:1) against --void, including the faintest,
+     because it carries timestamps and sequence numbers.
+     --ink-ghost is decoration only and must never carry readable text. */
+  /* Ratios are quoted against --float, the lightest surface any of them lands
+     on, so a step that passes here passes everywhere. */
+  --ink: #dce3ed;         /* 12.1:1 */
+  --ink-dim: #9aa6b8;     /*  6.3:1 */
+  --ink-faint: #8792a4;   /*  5.0:1 */
+  --ink-ghost: #4c5666;
+
+  /* ---- The single accent ---- */
   --signal: #3b82f6;
-  --signal-bright: #7aacff;
+  --signal-hover: #5b9bff;   /* one ramp step, for filled hover */
+  --signal-bright: #7aacff;  /* text and icons on dark */
   --signal-glow: rgba(59, 130, 246, 0.14);
+  --on-signal: #05070b;      /* content sitting on a filled accent */
 
-  /* --- Presence. The only other colour on the page. --- */
-  --live: #34d399;
-  --standby: #fbbf24;
+  /* ---- Semantic triplets ----
+     Each needs text, a tinted surface, and a border so it can carry a whole
+     element rather than only colouring a word. Desaturated for dark, where
+     saturated hues glow. */
+  --ok-text: #4ade80;
+  --ok-bg: rgba(52, 211, 153, 0.12);
+  --ok-border: rgba(52, 211, 153, 0.32);
 
-  /* --- State layers. Every hover/active is derived from these two values
-         rather than hand-picked per component, so interaction feels uniform. --- */
-  --state-hover: rgba(255, 255, 255, 0.045);
-  --state-active: rgba(255, 255, 255, 0.08);
+  --warn-text: #fbbf24;
+  --warn-bg: rgba(251, 191, 36, 0.12);
+  --warn-border: rgba(251, 191, 36, 0.32);
 
-  /* --- Type --- */
+  --danger-text: #f98a8a;
+  --danger-bg: rgba(239, 68, 68, 0.12);
+  --danger-border: rgba(239, 68, 68, 0.34);
+  --danger-solid: #b42323;
+
+  /* Presence reuses the semantic hues, but is never the only cue — the dot's
+     shape carries the same information for anyone who cannot see the colour. */
+  --live: var(--ok-text);
+  --standby: var(--warn-text);
+
+  /* ---- State layers ----
+     One overlay of the on-colour, raised per state, applied identically
+     everywhere. Hover and active are never hand-picked per component. */
+  --state-hover: rgba(255, 255, 255, 0.055);
+  --state-active: rgba(255, 255, 255, 0.09);
+
+  /* ---- Type ---- */
   --font-ui: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, monospace;
 
@@ -60,7 +92,13 @@
   --t-body: 14px;    /* message bodies — the reading size */
   --t-title: 15px;   /* channel and brand titles */
 
-  /* --- Spacing: 4px grid --- */
+  /* Line heights by role. Single-line UI must not inherit body leading, or
+     controls sit unevenly in their boxes. */
+  --lh-tight: 1.15;  /* single-line labels, buttons */
+  --lh-snug: 1.4;    /* captions, meta */
+  --lh-body: 1.55;   /* message bodies */
+
+  /* ---- Spacing: 4px grid ---- */
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
@@ -69,16 +107,32 @@
   --s6: 24px;
   --s8: 32px;
 
-  /* --- Geometry --- */
-  --radius: 6px;
+  /* ---- Geometry ----
+     One radius personality: soft, not pill. Nested radii step down so inner
+     corners stay parallel to the ones containing them. */
   --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
   --control-h: 28px;   /* shared by every control in a cluster */
   --target-min: 24px;  /* minimum interactive target */
+  --icon: 16px;        /* one icon size, on the grid */
+
+  /* ---- Elevation ----
+     Shadows barely register on dark surfaces, so height is carried by a
+     lighter surface plus a top highlight. The shadow only anchors it. */
+  --lift-menu: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 20px -8px rgba(0, 0, 0, 0.6);
+  --lift-modal: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 20px 48px -16px rgba(0, 0, 0, 0.65);
 
   --rail-width: 248px;
   --peer-width: 560px;
 
+  /* ---- Motion ----
+     Enter fast and settle; leave promptly. Never linear for anything organic. */
   --ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-micro-ms: 130ms;
+  --t-standard: 200ms;
+  --t-overlay: 260ms;
 }
 
 /* ============================================
@@ -204,11 +258,37 @@ button {
 }
 
 /* One focus treatment for everything, so keyboard navigation is legible
-   without each component inventing its own. */
+   without each component inventing its own. Independent of hover: a keyboard
+   user needs the ring whether or not the pointer happens to be elsewhere. */
 :focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
+}
+
+/* ---- Icons ----
+   One set, one size, one stroke width, drawn in currentColor so an icon always
+   matches the text it sits beside. Mixed glyph fonts and mismatched strokes are
+   the clearest tell of an interface assembled rather than designed. */
+.icon {
+  width: var(--icon);
+  height: var(--icon);
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon--sm {
+  width: 13px;
+  height: 13px;
+}
+
+/* Any column of figures — sequence numbers, counts, timestamps — needs digits
+   of equal width or the column visibly wobbles. */
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 ::-webkit-scrollbar {
@@ -242,13 +322,20 @@ button {
   padding: 0 var(--s3);
   border-radius: var(--radius);
   font-size: var(--t-small);
+  line-height: var(--lh-tight);
   white-space: nowrap;
-  transition: background-color 120ms var(--ease), border-color 120ms var(--ease),
-    color 120ms var(--ease);
+  transition: background-color var(--t-micro-ms) var(--ease),
+    border-color var(--t-micro-ms) var(--ease), color var(--t-micro-ms) var(--ease),
+    transform 90ms var(--ease);
+}
+
+/* A press that moves gives the control a physical quality nothing else does. */
+.control:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .control:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -258,6 +345,7 @@ button {
 }
 .control--ghost:hover:not(:disabled) {
   background: var(--state-hover);
+  /* The border lifts with the fill, or the edge looks detached from it. */
   border-color: var(--line-strong);
   color: var(--ink);
 }
@@ -267,24 +355,54 @@ button {
 
 .control--primary {
   background: var(--signal);
-  color: #05070b;
+  color: var(--on-signal);
   font-weight: 600;
   border: 1px solid var(--signal);
 }
 .control--primary:hover:not(:disabled) {
-  background: var(--signal-bright);
-  border-color: var(--signal-bright);
-}
-.control--primary:active:not(:disabled) {
-  background: var(--signal);
+  background: var(--signal-hover);
+  border-color: var(--signal-hover);
 }
 
 /* Destructive actions read as ghost until hovered, so they never compete with
-   the primary action beside them. */
+   the primary action beside them, and never look safe once reached. */
 .control--danger:hover:not(:disabled) {
-  color: #fca5a5;
-  border-color: #7f1d1d;
-  background: rgba(127, 29, 29, 0.18);
+  color: var(--danger-text);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
+/* ---- Loading ----
+   The label stays in place and keeps the button's width, so nothing the user
+   was about to click moves under them. */
+.control.is-busy {
+  pointer-events: none;
+  position: relative;
+  color: transparent;
+}
+
+.control.is-busy .icon {
+  opacity: 0;
+}
+
+.control.is-busy::after {
+  content: '';
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+  border-top-color: transparent;
+  color: var(--ink-dim);
+  animation: spin 620ms linear infinite;
+}
+
+.control--primary.is-busy::after {
+  color: var(--on-signal);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ---- Switch ----
@@ -659,19 +777,28 @@ button {
   background: var(--state-hover);
 }
 
+/* ---- Presence ----
+   Colour alone cannot carry this: roughly 8% of men cannot separate the hues,
+   and the states must still be distinguishable. Each is a different *shape* —
+   solid, half, and hollow — so the colour is reinforcement, not the signal. */
 .dot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  flex: 0 0 7px;
-  background: var(--ink-ghost);
+  flex: 0 0 8px;
+  border: 1.5px solid var(--ink-ghost);
+  background: transparent;
 }
+
 .dot.online {
+  border-color: var(--live);
   background: var(--live);
-  box-shadow: 0 0 6px rgba(52, 211, 153, 0.45);
+  box-shadow: 0 0 0 3px var(--ok-bg);
 }
+
 .dot.away {
-  background: var(--standby);
+  border-color: var(--standby);
+  background: linear-gradient(to right, var(--standby) 50%, transparent 50%);
 }
 
 /* The self-chosen name leads; the @handle sits under it because that is what
@@ -763,15 +890,25 @@ button {
   transition: opacity 120ms var(--ease);
 }
 
+/* A floating layer, so it reads as sitting above the rail rather than carved
+   into it. Inner padding keeps items off the rounded edge; their smaller
+   radius keeps the corners parallel. */
 .roster-menu {
   margin: 0 var(--s3) var(--s2);
-  padding: var(--s2);
-  background: var(--void);
+  padding: var(--s1);
+  background: var(--float);
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
+  box-shadow: var(--lift-menu);
   display: flex;
   flex-direction: column;
-  gap: var(--s1);
+  gap: 2px;
+  animation: menu-in 140ms var(--ease-out);
+}
+
+@keyframes menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
 }
 
 .roster-menu[hidden] {
@@ -787,14 +924,28 @@ button {
 }
 
 .menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
   width: 100%;
+  min-height: var(--target-min);
   padding: var(--s1) var(--s2);
   border-radius: var(--radius-sm);
   text-align: left;
   font-size: var(--t-small);
+  line-height: var(--lh-tight);
   color: var(--ink-dim);
-  transition: background-color 120ms var(--ease), color 120ms var(--ease);
+  transition: background-color var(--t-micro-ms) var(--ease), color var(--t-micro-ms) var(--ease);
+}
+
+/* A fixed gutter for the tick keeps every label on one left edge whether or
+   not its row is selected. */
+.menu-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  flex: 0 0 13px;
 }
 
 .menu-item:hover {
@@ -913,10 +1064,13 @@ button {
 
 .message {
   display: grid;
-  grid-template-columns: 48px 1fr;
+  /* Capped so prose keeps a readable measure. On a wide window an uncapped
+     line runs past 150 characters and the eye loses its place on the return
+     sweep; code blocks inside still scroll on their own. */
+  grid-template-columns: 48px minmax(0, 96ch);
   gap: var(--s3);
   padding: var(--s1) 0;
-  animation: arrive 200ms var(--ease);
+  animation: arrive 200ms var(--ease-out);
 }
 
 @keyframes arrive {
@@ -930,10 +1084,31 @@ button {
 .message-seq {
   font-family: var(--font-mono);
   font-size: var(--t-meta);
+  font-variant-numeric: tabular-nums;
   color: var(--ink-faint);
   text-align: right;
   padding-top: 3px;
   user-select: all;
+}
+
+/* ---- Grouping ----
+   Consecutive messages from one author repeat their identity for no reason;
+   collapsing the header turns a list of stamps back into someone talking.
+   The sequence number stays reachable on hover, since it is the value an agent
+   passes to since_seq. */
+.message.is-continuation {
+  padding-top: 0;
+}
+
+/* Dimmed rather than hidden: the sequence column is real data and a gap in it
+   reads as a missing message. Recessed keeps the rhythm without competing. */
+.message.is-continuation .message-seq {
+  color: var(--ink-ghost);
+  transition: color var(--t-micro-ms) var(--ease);
+}
+
+.message.is-continuation:hover .message-seq {
+  color: var(--ink-faint);
 }
 
 .message-head {
@@ -957,7 +1132,12 @@ button {
 .message-time {
   font-family: var(--font-mono);
   font-size: var(--t-meta);
+  font-variant-numeric: tabular-nums;
   color: var(--ink-faint);
+}
+
+.message-body {
+  line-height: var(--lh-body);
 }
 
 .message-body {
@@ -1258,6 +1438,14 @@ button {
   border-bottom: 1px solid var(--line);
 }
 
+/* Separates a destructive action from the safe ones beside it. */
+.toolbar-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: var(--s1) var(--s1);
+  background: var(--line);
+}
+
 .peer-status {
   flex: 1;
   min-width: 0;
@@ -1343,6 +1531,87 @@ button {
 }
 
 /* ============================================
+   Toasts
+   ============================================
+   Failures used to be written into the transmission strip, which is a status
+   readout for the net — not an error channel. These sit above everything,
+   carry an icon as well as a colour, and errors stay until dismissed because
+   the user may need to act on them. */
+
+.toasts {
+  position: fixed;
+  right: var(--s5);
+  bottom: var(--s5);
+  z-index: 200;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--s2);
+  max-width: 400px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s3);
+  padding: var(--s3);
+  border-radius: var(--radius);
+  background: var(--float);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--lift-menu);
+  pointer-events: auto;
+  animation: toast-in var(--t-standard) var(--ease-out);
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.toast.is-leaving {
+  animation: toast-out 140ms var(--ease) forwards;
+}
+
+@keyframes toast-out {
+  to { opacity: 0; transform: translateY(4px); }
+}
+
+.toast-icon {
+  margin-top: 1px;
+}
+
+.toast--error {
+  border-color: var(--danger-border);
+  background: linear-gradient(var(--danger-bg), var(--danger-bg)), var(--float);
+}
+.toast--error .toast-icon { color: var(--danger-text); }
+
+.toast--ok {
+  border-color: var(--ok-border);
+  background: linear-gradient(var(--ok-bg), var(--ok-bg)), var(--float);
+}
+.toast--ok .toast-icon { color: var(--ok-text); }
+
+.toast-body {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--t-ui);
+  line-height: var(--lh-snug);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.toast-dismiss {
+  color: var(--ink-faint);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  transition: color var(--t-micro-ms) var(--ease);
+}
+.toast-dismiss:hover {
+  color: var(--ink);
+}
+
+/* ============================================
    Modal
    ============================================
    Used where a settings surface needs room to grow. The rail cannot grow;
@@ -1375,15 +1644,17 @@ button {
   max-height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--panel);
+  /* The layer above everything: a lighter surface and a top highlight, since a
+     drop shadow alone barely registers against a near-black page. */
+  background: var(--float);
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
-  animation: rise 160ms var(--ease);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--lift-modal);
+  animation: rise var(--t-overlay) var(--ease-out);
 }
 
 @keyframes rise {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(10px) scale(0.99); }
   to   { opacity: 1; transform: none; }
 }
 

@@ -13,7 +13,7 @@
        double-click-to-maximize. -->
   <header class="titlebar">
     <div class="titlebar-drag">
-      <span class="titlebar-mark">◈</span>
+      <span class="titlebar-mark"><svg class="icon icon--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 4.5v9L12 21l-7-4.5v-9z"/><circle cx="12" cy="12" r="2.5"/></svg></span>
       <span class="titlebar-name">ClankerCom</span>
     </div>
 
@@ -47,7 +47,7 @@
     <div class="rail-scroll">
       <section class="rail-section">
         <button class="rail-item" id="open-tasks">
-          <span class="sigil">✓</span>
+          <span class="sigil"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5l2 2 3.5-3.5"/><path d="M4 17l2 2 3.5-3.5"/><path d="M13 8h7M13 17h7"/></svg></span>
           <span class="label">Tasks</span>
           <span class="unread" id="tasks-badge" hidden>0</span>
         </button>
@@ -57,7 +57,7 @@
         <div class="rail-heading">
           <span id="channels-heading">Channels</span>
           <button class="icon-button" id="add-channel" aria-label="Create a channel"
-                  aria-expanded="false">+</button>
+                  aria-expanded="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </div>
 
         <form class="inline-form" id="new-channel" hidden>
@@ -84,7 +84,7 @@
         <div class="rail-heading">
           <span id="roster-heading">Roster</span>
           <button class="icon-button" id="add-group" aria-label="Create a group"
-                  aria-expanded="false">+</button>
+                  aria-expanded="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </div>
 
         <form class="inline-form" id="new-group" hidden>
@@ -179,7 +179,12 @@
 
     <div class="peer-controls" role="toolbar" aria-label="Peer controls">
       <span class="peer-status" id="peer-status">No peer selected</span>
+
+      <!-- Destructive sits apart from the common actions, behind a divider, so
+           it is never the button reached for by momentum. -->
       <button class="control control--ghost control--danger" id="peer-remove" disabled>Remove</button>
+      <span class="toolbar-divider" aria-hidden="true"></span>
+
       <button class="control control--ghost" id="peer-unlock" disabled>Unlock</button>
       <button class="control control--primary" id="peer-lock" disabled>Lock to conversation</button>
     </div>
@@ -201,7 +206,7 @@
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="group-modal-title">
       <header class="modal-header">
         <h2 class="modal-title" id="group-modal-title">Group settings</h2>
-        <button class="icon-button" id="group-modal-close" aria-label="Close">✕</button>
+        <button class="icon-button" id="group-modal-close" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </header>
 
       <div class="modal-body">
@@ -234,6 +239,10 @@
       </footer>
     </div>
   </div>
+
+  <!-- Failures surface here rather than in the transmission strip, which
+       reports the state of the net and nothing else. -->
+  <div class="toasts" id="toasts" role="region" aria-label="Notifications"></div>
 
   <script src="renderer/app.js"></script>
 </body>
