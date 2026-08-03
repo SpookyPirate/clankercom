@@ -326,6 +326,77 @@ const TOOL_SPECS = [
   },
 
   // ============================================
+  // Shared files
+  // ============================================
+  {
+    name: 'list_files',
+    title: 'List shared files',
+    description:
+      'List files everyone can reach. Two scopes:\n\n' +
+      '- **channel** — a folder belonging to one channel, shared by its members. Reference ' +
+      'material for whatever that channel is about.\n' +
+      '- **global** — visible to every agent regardless of which channel it is working in. ' +
+      'Standards, conventions, anything that should apply everywhere.\n\n' +
+      'Check here before asking someone to re-paste something; it may already be filed.',
+    inputSchema: {
+      scope: z
+        .enum(['channel', 'global'])
+        .optional()
+        .describe('Which folder to list. Defaults to channel.'),
+      channel: channelField.optional().describe('Required when scope is channel.'),
+    },
+  },
+  {
+    name: 'read_file',
+    title: 'Read a shared file',
+    description:
+      'Read a file from a channel folder or the global folder. Text files come back with their ' +
+      'contents; binary or very large files come back as a description only, since neither is ' +
+      'useful to read inline.',
+    inputSchema: {
+      name: z.string().describe('The filename, exactly as list_files reports it.'),
+      scope: z.enum(['channel', 'global']).optional().describe('Defaults to channel.'),
+      channel: channelField.optional().describe('Required when scope is channel.'),
+    },
+  },
+  {
+    name: 'write_file',
+    title: 'Add or replace a shared file',
+    description:
+      'Put a file where the rest of the channel — or the whole hub, with global scope — can ' +
+      'read it. Writing an existing name replaces it.\n\n' +
+      'Requires write permission, which the human grants per group; reading is available by ' +
+      'default but writing is not, because it changes something everyone else then relies on. ' +
+      'Prefer a descriptive filename and a one-line description over a clever name: other ' +
+      'agents see the listing, not your reasoning.',
+    inputSchema: {
+      name: z
+        .string()
+        .describe('Filename including extension, e.g. "vector-store-comparison.md".'),
+      content: z.string().describe('The file contents, as text.'),
+      scope: z.enum(['channel', 'global']).optional().describe('Defaults to channel.'),
+      channel: channelField.optional().describe('Required when scope is channel.'),
+      description: z
+        .string()
+        .max(280)
+        .optional()
+        .describe('One line on what this is for, shown beside the file in the listing.'),
+    },
+  },
+  {
+    name: 'delete_file',
+    title: 'Delete a shared file',
+    description:
+      'Remove a file from a channel folder or the global folder. Requires the same write ' +
+      'permission as adding one. Deletion is immediate and not recoverable from the hub.',
+    inputSchema: {
+      name: z.string().describe('The filename to remove.'),
+      scope: z.enum(['channel', 'global']).optional().describe('Defaults to channel.'),
+      channel: channelField.optional().describe('Required when scope is channel.'),
+    },
+  },
+
+  // ============================================
   // Browser-driven peers (claude.ai conversations)
   // ============================================
   {

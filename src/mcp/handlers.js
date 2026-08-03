@@ -159,6 +159,38 @@ function resolveTarget(hub, selfAgent, target) {
   );
 }
 
+/**
+ * Work out which folder a file tool means.
+ *
+ * Channel scope needs a channel, and there is no implicit "current" one — an
+ * agent may be in several, so guessing would quietly file things in the wrong
+ * place. The error says exactly what to pass.
+ */
+function resolveFileScope(hub, agent, args) {
+  const scope = args.scope || 'channel';
+  if (scope === 'global') return { scope, channelId: null, label: 'global files' };
+
+  if (!args.channel) {
+    const options = hub
+      .publicAgent(agent)
+      .channels.map((name) => `"${name}"`)
+      .join(', ');
+    throw new Error(
+      `channel scope needs a channel — pass one of ${options || 'the channels you have joined'}, ` +
+        `or use scope "global".`
+    );
+  }
+
+  const channel = requireChannel(hub, args.channel);
+  return { scope, channelId: channel.id, label: `#${channel.name} files` };
+}
+
+/** Map a scope and an action onto the group permission that governs it. */
+function permissionFor(scope, action) {
+  const noun = scope === 'global' ? 'GlobalFiles' : 'ChannelFiles';
+  return `${action}${noun}`;
+}
+
 /** Look up a channel for tools that require one, with a helpful failure. */
 function requireChannel(hub, reference) {
   const channel = hub.getChannel(stripSigil(reference));
@@ -456,6 +488,69 @@ const handlers = {
     const agent = ensureIdentity(context);
     const task = hub.taskBoard.setStatus(args.task_id, args.status, agent.id);
     return asText(`${task.id} is now ${task.status.replace('_', ' ')}.`);
+  },
+
+  // ---- shared files ----
+
+  list_files(args, context) {
+    const { hub } = context;
+    const agent = ensureIdentity(context);
+    const { scope, channelId, label } = resolveFileScope(hub, agent, args);
+
+    hub.requirePermission(agent.id, permissionFor(scope, 'read'), `read ${label} files`);
+
+    const files = hub.files.list(scope, channelId);
+    if (!files.length) return asText(`No files in ${label} yet.`);
+
+    const lines = files.map((file) => {
+      const size = file.size < 1024 ? `${file.size} B` : `${Math.round(file.size / 1024)} KB`;
+      const note = file.description ? `\n    ${file.description}` : '';
+      return `${file.name}  (${size}, added by @${file.addedBy})${note}`;
+    });
+    return asText(`${label} — ${files.length} file(s):\n${lines.join('\n')}`);
+  },
+
+  read_file(args, context) {
+    const { hub } = context;
+    const agent = ensureIdentity(context);
+    const { scope, channelId, label } = resolveFileScope(hub, agent, args);
+
+    hub.requirePermission(agent.id, permissionFor(scope, 'read'), `read ${label} files`);
+
+    const file = hub.files.read(scope, channelId, args.name);
+    if (file.text === null) return asText(`${file.name} — ${file.note}`);
+
+    return asText(
+      `${file.name}${file.description ? ` — ${file.description}` : ''}\n` +
+        `added by @${file.addedBy}\n\n${file.text}`
+    );
+  },
+
+  write_file(args, context) {
+    const { hub } = context;
+    const agent = ensureIdentity(context);
+    const { scope, channelId, label } = resolveFileScope(hub, agent, args);
+
+    hub.requirePermission(agent.id, permissionFor(scope, 'write'), `add files to ${label}`);
+
+    const file = hub.files.write(scope, channelId, {
+      name: args.name,
+      content: args.content,
+      authorId: agent.id,
+      description: args.description,
+    });
+    return asText(`Saved ${file.name} to ${label} (${file.size} bytes).`);
+  },
+
+  delete_file(args, context) {
+    const { hub } = context;
+    const agent = ensureIdentity(context);
+    const { scope, channelId, label } = resolveFileScope(hub, agent, args);
+
+    hub.requirePermission(agent.id, permissionFor(scope, 'write'), `delete files from ${label}`);
+
+    const name = hub.files.remove(scope, channelId, args.name);
+    return asText(`Deleted ${name} from ${label}.`);
   },
 
   // ---- browser peers ----

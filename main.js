@@ -11,9 +11,10 @@
  * renderer stays live without polling.
  */
 
+const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { app, BrowserWindow, Menu, ipcMain, webContents, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, webContents, shell } = require('electron');
 
 const { APP_NAME, DEFAULT_CHANNEL } = require('./src/config');
 const { Store } = require('./src/hub/store');
@@ -101,6 +102,8 @@ function forwardHubEvents() {
   hub.on('group:changed', (groups) => send('hub:groups', groups));
   hub.on('task:changed', (task) => send('hub:task', task));
   hub.on('settings:changed', (settings) => send('hub:settings', settings));
+  hub.on('files:changed', (scope) => send('hub:files', scope));
+  hub.on('channel:cleared', (channel) => send('hub:cleared', channel));
   peers.on('peers:changed', (list) => send('hub:peers', list));
 }
 
@@ -296,6 +299,77 @@ ipcMain.handle('hub:removeAgent', async (_event, { agentId }) => {
   hub.removeAgent(agentId);
   return true;
 });
+
+// ============================================
+// IPC — shared files
+// ============================================
+
+ipcMain.handle('files:list', async (_event, { scope, channel }) => {
+  const channelId = scope === 'global' ? null : hub.getChannel(channel)?.id;
+  return hub.files.list(scope, channelId);
+});
+
+/** Add files through a native picker; the vault re-sanitises every name. */
+ipcMain.handle('files:add', async (_event, { scope, channel }) => {
+  const channelId = scope === 'global' ? null : hub.getChannel(channel)?.id;
+
+  const picked = await dialog.showOpenDialog(mainWindow, {
+    title: scope === 'global' ? 'Add to global files' : `Add to #${channel} files`,
+    properties: ['openFile', 'multiSelections'],
+  });
+  if (picked.canceled) return [];
+
+  const added = [];
+  for (const filePath of picked.filePaths) {
+    const contents = fs.readFileSync(filePath);
+    added.push(
+      hub.files.write(scope, channelId, {
+        name: path.basename(filePath),
+        content: contents.toString('base64'),
+        encoding: 'base64',
+        authorId: humanAgent.id,
+      })
+    );
+  }
+  return added;
+});
+
+ipcMain.handle('files:delete', async (_event, { scope, channel, name }) => {
+  const channelId = scope === 'global' ? null : hub.getChannel(channel)?.id;
+  return hub.files.remove(scope, channelId, name);
+});
+
+ipcMain.handle('files:save', async (_event, { scope, channel, name }) => {
+  const channelId = scope === 'global' ? null : hub.getChannel(channel)?.id;
+  const source = hub.files.pathOf(scope, channelId, name);
+
+  const target = await dialog.showSaveDialog(mainWindow, { defaultPath: name });
+  if (target.canceled) return null;
+
+  fs.copyFileSync(source, target.filePath);
+  return target.filePath;
+});
+
+// ============================================
+// IPC — history
+// ============================================
+
+ipcMain.handle('hub:exportChannel', async (_event, { channel }) => {
+  const markdown = await hub.exportChannelMarkdown(channel);
+  const target = hub.getChannel(channel);
+
+  const chosen = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export transcript',
+    defaultPath: `${target?.name || 'channel'}.md`,
+    filters: [{ name: 'Markdown', extensions: ['md'] }],
+  });
+  if (chosen.canceled) return null;
+
+  fs.writeFileSync(chosen.filePath, markdown, 'utf8');
+  return chosen.filePath;
+});
+
+ipcMain.handle('hub:clearChannel', async (_event, { channel }) => hub.clearChannel(channel));
 
 // ============================================
 // IPC — tasks

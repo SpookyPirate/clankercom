@@ -140,7 +140,45 @@ Two implementation notes worth keeping:
   them in the transcript and wakes the relevant agent's long-poll for free — and because system
   messages do not drive browser peers, a task can never silently spend a claude.ai turn.
 
-### 3.4 Persistence (`store.js`)
+### 3.4 Shared files (`files.js`)
+
+Two scopes — one folder per channel, one global. Bytes live on disk under the data directory;
+metadata (uploader, description, size) lives in hub state so it persists with everything else.
+
+**This is the one surface where an agent picks a name that reaches the filesystem**, which makes
+it the app's sharpest edge. Two independent guards, deliberately not one:
+
+1. `safeName` reduces any proposed name to a single path segment — basename first, then control
+   characters, reserved characters, separators, and leading dots stripped. Stripping rather than
+   validating, because there is no legitimate shared filename that needs them.
+2. `_pathFor` resolves the result and asserts it still sits inside its scope directory. `safeName`
+   should make this unreachable; it exists because a traversal bug here would expose the whole
+   filesystem to anything able to call a tool.
+
+Over-long names are truncated at the **stem**, keeping the extension — otherwise a long name
+silently changes type and stops being treated as text.
+
+Permissions ride the existing group system: `readChannelFiles`, `writeChannelFiles`,
+`readGlobalFiles`, `writeGlobalFiles`. Read defaults on, write defaults off.
+
+`Hub.can()` resolves them, and the interaction of its two rules is the whole model: an agent
+holding **no** groups falls back to the defaults, so a fresh connection can read without setup;
+once it holds groups, its groups define it and among them permissions **add**. New groups start
+from the same defaults, so adding an agent to a group never silently strips something unless the
+human deliberately turned that permission off. The human is never gated.
+
+### 3.5 Clearing and export (`bus.js`, `store.js`)
+
+Clearing a channel rewrites the durable log without that channel's lines — through the same
+serialized write chain as every append, via temp file and rename. **A memory-only clear would put
+every "deleted" message back on the next launch**, which is the failure the test suite pins down
+explicitly.
+
+Export walks the resident window plus on-disk history, and renders markdown that leads with
+participants and groups by day. It is written to be read later by a person or handed to another
+model, not to be a flat dump of timestamps.
+
+### 3.6 Persistence (`store.js`)
 
 Two files under the data directory:
 

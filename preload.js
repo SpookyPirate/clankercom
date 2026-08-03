@@ -20,6 +20,8 @@ const SUBSCRIBABLE_EVENTS = [
   'hub:task',
   'hub:settings',
   'hub:peers',
+  'hub:files',
+  'hub:cleared',
 ];
 
 contextBridge.exposeInMainWorld('clanker', {
@@ -48,6 +50,16 @@ contextBridge.exposeInMainWorld('clanker', {
   setGroupPermission: (groupId, permission, value) =>
     ipcRenderer.invoke('hub:setGroupPermission', { groupId, permission, value }),
   removeAgent: (agentId) => ipcRenderer.invoke('hub:removeAgent', { agentId }),
+
+  // ---- shared files ----
+  listFiles: (scope, channel) => ipcRenderer.invoke('files:list', { scope, channel }),
+  addFiles: (scope, channel) => ipcRenderer.invoke('files:add', { scope, channel }),
+  deleteFile: (scope, channel, name) => ipcRenderer.invoke('files:delete', { scope, channel, name }),
+  saveFileAs: (scope, channel, name) => ipcRenderer.invoke('files:save', { scope, channel, name }),
+
+  // ---- history ----
+  exportChannel: (channel) => ipcRenderer.invoke('hub:exportChannel', { channel }),
+  clearChannel: (channel) => ipcRenderer.invoke('hub:clearChannel', { channel }),
 
   // ---- tasks ----
   listTasks: () => ipcRenderer.invoke('hub:listTasks'),

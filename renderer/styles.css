@@ -1158,10 +1158,12 @@ button {
 
 .message {
   display: grid;
-  /* Capped so prose keeps a readable measure. On a wide window an uncapped
-     line runs past 150 characters and the eye loses its place on the return
-     sweep; code blocks inside still scroll on their own. */
-  grid-template-columns: 48px minmax(0, 96ch);
+  /* The column fills the pane up to a ceiling. The 50–75 character measure is
+     a rule for long-form prose; chat is short turns broken up by author and
+     timestamp, and every mature client lets messages fill their pane. A cap
+     still exists so an ultrawide window does not produce 200-character lines,
+     but it sits well above the reading width rather than at it. */
+  grid-template-columns: 48px minmax(0, 132ch);
   gap: var(--s3);
   padding: var(--s1) 0;
   animation: arrive 200ms var(--ease-out);
@@ -1916,10 +1918,144 @@ button {
 
 .modal-footer {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: var(--s3);
   padding: var(--s4) var(--s5);
   border-top: 1px solid var(--line);
+}
+
+.modal--narrow {
+  max-width: 420px;
+}
+
+.confirm-body {
+  margin: 0;
+  font-size: var(--t-ui);
+  line-height: var(--lh-snug);
+  color: var(--ink-dim);
+}
+
+/* A destructive confirm is the one place the primary action is red: the
+   button that carries the risk should look like it does. */
+.control--destructive {
+  background: var(--danger-solid);
+  border-color: var(--danger-solid);
+  color: #fff;
+}
+.control--destructive:hover:not(:disabled) {
+  background: #c92b2b;
+  border-color: #c92b2b;
+}
+
+/* ---- Scope tabs ---- */
+
+.scope-tabs {
+  display: flex;
+  gap: var(--s1);
+  padding: var(--s3) var(--s5) 0;
+}
+
+.scope-tab {
+  height: var(--control-h);
+  padding: 0 var(--s3);
+  border-radius: var(--radius);
+  font-size: var(--t-small);
+  color: var(--ink-faint);
+  transition: background-color var(--t-micro-ms) var(--ease), color var(--t-micro-ms) var(--ease);
+}
+
+.scope-tab:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+
+.scope-tab.is-active {
+  background: var(--signal-glow);
+  color: var(--signal-bright);
+}
+
+/* ---- File rows ---- */
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2);
+  border-radius: var(--radius);
+  transition: background-color var(--t-micro-ms) var(--ease);
+}
+
+.file-row:hover {
+  background: var(--state-hover);
+}
+
+.file-icon {
+  color: var(--ink-faint);
+}
+
+.file-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-name {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-meta {
+  font-family: var(--font-ui-small);
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
+}
+
+/* Row actions stay hidden until the row is hovered, so a long list reads as
+   content rather than a wall of buttons. */
+.file-actions {
+  display: flex;
+  gap: var(--s1);
+  opacity: 0;
+  transition: opacity var(--t-micro-ms) var(--ease);
+}
+
+.file-row:hover .file-actions,
+.file-actions:focus-within {
+  opacity: 1;
+}
+
+.files-hint {
+  font-family: var(--font-ui-small);
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
+}
+
+/* ---- Channel actions menu ---- */
+
+.channel-menu-wrap {
+  position: relative;
+}
+
+.channel-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--s1));
+  z-index: 50;
+  min-width: 210px;
+  padding: var(--s1);
+  background: var(--float);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--lift-menu);
+  animation: menu-in 140ms var(--ease-out);
+}
+
+.channel-menu[hidden] {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

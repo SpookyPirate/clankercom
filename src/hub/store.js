@@ -142,6 +142,47 @@ class Store {
   // ============================================
 
   /**
+   * Remove one channel's messages from the durable log.
+   *
+   * The log is append-only in normal use, so deletion means rewriting it. That
+   * happens through the same serialized write chain as every append, and via a
+   * temp file and rename, so a crash mid-rewrite leaves the original intact
+   * rather than a half-filtered transcript.
+   *
+   * Returns how many lines were dropped.
+   */
+  deleteChannelMessages(channelId) {
+    this.writeChain = this.writeChain.then(async () => {
+      if (!fs.existsSync(this.messagesPath)) return 0;
+
+      const raw = await fs.promises.readFile(this.messagesPath, 'utf8');
+      const kept = [];
+      let removed = 0;
+
+      for (const line of raw.split('\n')) {
+        if (!line.trim()) continue;
+        try {
+          if (JSON.parse(line).channelId === channelId) {
+            removed++;
+            continue;
+          }
+        } catch {
+          // An unparseable line belongs to no channel; keep it rather than
+          // silently discarding data during an unrelated delete.
+        }
+        kept.push(line);
+      }
+
+      const tempPath = `${this.messagesPath}.tmp`;
+      await fs.promises.writeFile(tempPath, kept.length ? kept.join('\n') + '\n' : '', 'utf8');
+      await fs.promises.rename(tempPath, this.messagesPath);
+      return removed;
+    });
+
+    return this.writeChain;
+  }
+
+  /**
    * Scan the on-disk log for messages in a channel older than the resident
    * window. Linear read — acceptable because this is only hit when scrolling
    * far back in the UI, never on the hot messaging path.

@@ -23,6 +23,7 @@ const {
 
 const { Store } = require('../src/hub/store');
 const { Hub } = require('../src/hub/bus');
+const { safeName } = require('../src/hub/files');
 const { createHubServer } = require('../src/mcp/http-server');
 
 // ============================================
@@ -278,9 +279,112 @@ async function verifyGroupsAndTasks() {
   await reopened.close();
 }
 
+// ============================================
+// Shared files, clearing, and export
+// ============================================
+
+async function verifyFilesAndHistory() {
+  console.log('\nfiles, permissions, clearing, and export');
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-files-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  const human = hub.registerAgent({ name: 'Operator', kind: 'human', platform: 'human' });
+  const agent = hub.registerAgent({ name: 'Filing Agent', platform: 'claude-code' });
+  const general = hub.getChannel('general');
+  hub.joinChannel(agent.id, general.id);
+
+  // ---- the security boundary ----
+  // Agents choose filenames, so nothing they can name may escape its folder.
+  const escapes = [
+    '../../../../Windows/System32/drivers/etc/hosts',
+    '..\\..\\secrets.txt',
+    '/etc/passwd',
+    'notes.md/../../../evil.sh',
+  ];
+  const scopeRoot = path.resolve(dataDir, 'files', 'channels', general.id);
+  const contained = escapes.every((name) => {
+    try {
+      const resolved = path.resolve(hub.files.pathOf('channel', general.id, name));
+      return resolved.startsWith(scopeRoot + path.sep);
+    } catch {
+      return true; // outright rejection is also containment
+    }
+  });
+  check('no filename can escape its folder', contained, escapes.join(' | '));
+  check(
+    'legitimate names survive sanitising',
+    safeName('report v2 (final).csv') === 'report v2 (final).csv'
+  );
+
+  // ---- permissions ----
+  check('reading shared files is allowed by default', hub.can(agent.id, 'readChannelFiles'));
+  check('writing shared files is not', !hub.can(agent.id, 'writeChannelFiles'));
+  check('the human is never gated', hub.can(human.id, 'writeGlobalFiles'));
+
+  const writers = hub.createGroup({ name: 'Writers' });
+  hub.setGroupMembership(agent.id, writers.id, true);
+  check('a new group does not strip the read default', hub.can(agent.id, 'readChannelFiles'));
+
+  hub.setGroupPermission(writers.id, 'writeChannelFiles', true);
+  check('granting write through a group works', hub.can(agent.id, 'writeChannelFiles'));
+  check('a channel grant does not leak into global', !hub.can(agent.id, 'writeGlobalFiles'));
+
+  // ---- storage ----
+  hub.files.write('channel', general.id, {
+    name: 'notes.md',
+    content: '# Shared notes',
+    authorId: agent.id,
+    description: 'scratch',
+  });
+  hub.files.write('global', null, { name: 'charter.md', content: 'be excellent', authorId: human.id });
+
+  check('a channel file lands in its channel', hub.files.list('channel', general.id).length === 1);
+  check('scopes are separate', hub.files.list('global', null)[0]?.name === 'charter.md');
+  check(
+    'text files read back intact',
+    hub.files.read('channel', general.id, 'notes.md').text === '# Shared notes'
+  );
+
+  hub.files.remove('channel', general.id, 'notes.md');
+  check('deleting removes it from the listing', hub.files.list('channel', general.id).length === 0);
+
+  // ---- export ----
+  for (let index = 0; index < 4; index++) {
+    hub.postMessage({ channelId: general.id, authorId: agent.id, text: `line ${index}` });
+  }
+  const markdown = await hub.exportChannelMarkdown('general');
+  check('the export names its participants', markdown.includes('@filing-agent'));
+  check('the export groups by day', /### \w+day/.test(markdown));
+  check('the export carries the messages', markdown.includes('line 3'));
+
+  // ---- clearing ----
+  const removed = await hub.clearChannel('general');
+  check('clearing reports what it removed', removed >= 4, `removed ${removed}`);
+  check('the channel is empty in memory', hub.readMessages('general', { limit: 50 }).length === 0);
+
+  await store.close();
+
+  const reopened = new Store(dataDir);
+  const restored = new Hub(reopened);
+  restored.load();
+
+  // The durable log is the copy that matters — a memory-only clear would put
+  // every "deleted" message back on the next launch.
+  check(
+    'cleared messages do not come back after a restart',
+    restored.readMessages('general', { limit: 50 }).length === 0
+  );
+  check('clearing a channel leaves global files alone', restored.files.list('global', null).length === 1);
+  await reopened.close();
+}
+
 async function main() {
   await verifyPortSelection();
   await verifyGroupsAndTasks();
+  await verifyFilesAndHistory();
 
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-check-'));
   console.log(`\nClankerCom hub check\ndata dir: ${dataDir}\n`);

@@ -18,6 +18,7 @@ const { EventEmitter } = require('events');
 
 const { DEFAULT_CHANNEL, TIMEOUTS, LIMITS } = require('../config');
 const { TaskBoard } = require('./tasks');
+const { FileVault } = require('./files');
 
 // ============================================
 // Helpers
@@ -58,6 +59,14 @@ function dmChannelName(agentIdA, agentIdB) {
 const DEFAULT_GROUP_PERMISSIONS = {
   // Work raised by a member skips the human approval queue.
   autoApproveTasks: false,
+
+  // Shared files. Reading is granted by default because it is inert and the
+  // whole point of a common folder; writing is not, because it changes state
+  // every other member of the channel then relies on.
+  readChannelFiles: true,
+  writeChannelFiles: false,
+  readGlobalFiles: true,
+  writeGlobalFiles: false,
 };
 
 class Hub extends EventEmitter {
@@ -88,6 +97,7 @@ class Hub extends EventEmitter {
     this.settings = { autoApproveTasks: false };
 
     this.taskBoard = new TaskBoard(this);
+    this.files = new FileVault(this, store.dataDir);
   }
 
   // ============================================
@@ -108,6 +118,7 @@ class Hub extends EventEmitter {
       for (const channel of state.channels || []) this._restoreChannel(channel);
       for (const group of state.groups || []) this.groups.set(group.id, group);
       this.taskBoard.restore(state.tasks);
+      this.files.restore(state.files);
     }
 
     this.messages = messages;
@@ -183,6 +194,7 @@ class Hub extends EventEmitter {
       })),
       groups: Array.from(this.groups.values()),
       tasks: this.taskBoard.serialize(),
+      files: this.files.serialize(),
     });
   }
 
@@ -470,20 +482,49 @@ class Hub extends EventEmitter {
   }
 
   /**
-   * Whether work raised by this agent skips the approval queue.
+   * Whether an agent holds a permission.
    *
-   * The master switch covers everyone. Otherwise any single group granting the
-   * permission is enough — groups add capability, they never remove it, so a
-   * trusted role cannot be cancelled out by also holding an untrusted one.
+   * Two rules, and the interaction between them is the whole model:
+   *
+   *   1. An agent holding no groups falls back to the defaults, so a fresh
+   *      connection can read shared files without any setup.
+   *   2. Once it holds groups, its groups define it — and among them
+   *      permissions *add*. Holding one permissive group is enough, whatever
+   *      else it holds, so a trusted role is never cancelled by an untrusted
+   *      one. New groups start from the same defaults, so adding an agent to a
+   *      group never silently strips something it already had unless the human
+   *      deliberately turned that permission off.
+   *
+   * The human runs the hub and is not gated by any of it.
    */
-  canAutoApprove(agentId) {
-    if (this.settings.autoApproveTasks) return true;
-
+  can(agentId, permission) {
     const agent = this.agents.get(agentId);
     if (!agent) return false;
+    if (agent.kind === 'human') return true;
+
+    if (permission === 'autoApproveTasks' && this.settings.autoApproveTasks) return true;
+
+    if (agent.groupIds.size === 0) return DEFAULT_GROUP_PERMISSIONS[permission] === true;
 
     return Array.from(agent.groupIds).some(
-      (groupId) => this.groups.get(groupId)?.permissions?.autoApproveTasks
+      (groupId) => this.groups.get(groupId)?.permissions?.[permission] === true
+    );
+  }
+
+  /** Whether work raised by this agent skips the approval queue. */
+  canAutoApprove(agentId) {
+    return this.can(agentId, 'autoApproveTasks');
+  }
+
+  /**
+   * Raise a permission failure that names the capability rather than just
+   * refusing, so an agent can tell its human what to grant.
+   */
+  requirePermission(agentId, permission, action) {
+    if (this.can(agentId, permission)) return;
+    throw new Error(
+      `you do not have permission to ${action}. Ask the human to grant "${permission}" ` +
+        `to one of your groups in the console.`
     );
   }
 
@@ -677,6 +718,119 @@ class Hub extends EventEmitter {
     const inChannel = this.messages.filter((m) => m.channelId === channel.id);
     const filtered = sinceSeq != null ? inChannel.filter((m) => m.seq > sinceSeq) : inChannel;
     return filtered.slice(-capped);
+  }
+
+  // ============================================
+  // Clearing and export
+  // ============================================
+
+  /**
+   * Delete a channel's conversation history.
+   *
+   * The resident window is only half of it — the transcript on disk is the
+   * durable copy, so it is rewritten without this channel's lines. Anything
+   * less would restore every "deleted" message on the next launch.
+   *
+   * Returns how many messages were removed.
+   */
+  async clearChannel(channelReference) {
+    const channel = this.getChannel(channelReference);
+    if (!channel) throw new Error(`unknown channel: ${channelReference}`);
+
+    const before = this.messages.length;
+    this.messages = this.messages.filter((message) => message.channelId !== channel.id);
+    const removedResident = before - this.messages.length;
+
+    const removedOnDisk = await this.store.deleteChannelMessages(channel.id);
+
+    this._persist();
+    this.emit('channel:cleared', { id: channel.id, name: channel.name });
+    return Math.max(removedResident, removedOnDisk);
+  }
+
+  /**
+   * Render a channel as a markdown transcript.
+   *
+   * Written to be read later by a person or handed to another model, so it
+   * leads with who took part and groups by day rather than emitting a flat
+   * list of timestamps.
+   */
+  async exportChannelMarkdown(channelReference) {
+    const channel = this.getChannel(channelReference);
+    if (!channel) throw new Error(`unknown channel: ${channelReference}`);
+
+    const messages = await this.allChannelMessages(channel.id);
+    const label = channel.isDm ? 'Direct message' : `#${channel.name}`;
+
+    const participants = new Map();
+    for (const message of messages) {
+      if (message.kind === 'system' || !message.authorHandle) continue;
+      participants.set(message.authorHandle, {
+        name: message.authorDisplayName || message.authorHandle,
+        platform: message.authorPlatform,
+      });
+    }
+
+    const lines = [`# ${label}`, ''];
+    if (channel.topic) lines.push(`> ${channel.topic}`, '');
+    lines.push(
+      `**Exported** ${new Date().toLocaleString()}  `,
+      `**Messages** ${messages.length}`,
+      ''
+    );
+
+    if (participants.size) {
+      lines.push('## Participants', '');
+      for (const [handle, who] of participants) {
+        lines.push(`- **${who.name}** \`@${handle}\` — ${who.platform}`);
+      }
+      lines.push('');
+    }
+
+    lines.push('## Transcript', '');
+
+    let lastDay = null;
+    for (const message of messages) {
+      const day = new Date(message.ts).toDateString();
+      if (day !== lastDay) {
+        lines.push(`### ${new Date(message.ts).toLocaleDateString([], {
+          weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+        })}`, '');
+        lastDay = day;
+      }
+
+      const time = new Date(message.ts).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      if (message.kind === 'system') {
+        lines.push(`_${time} — ${message.text}_`, '');
+        continue;
+      }
+
+      lines.push(
+        `**${message.authorDisplayName || message.authorHandle}** ` +
+          `\`@${message.authorHandle}\` · ${time}`,
+        '',
+        message.text,
+        ''
+      );
+    }
+
+    lines.push('---', '', `_Exported from ClankerCom._`);
+    return lines.join('\n');
+  }
+
+  /** Every message in a channel, resident window plus on-disk history. */
+  async allChannelMessages(channelId) {
+    const resident = this.messages.filter((message) => message.channelId === channelId);
+    const oldest = resident.length ? resident[0].seq : null;
+    const older = await this.store.readChannelHistory(channelId, {
+      beforeSeq: oldest,
+      limit: Number.MAX_SAFE_INTEGER,
+    });
+    return [...older, ...resident].sort((a, b) => a.seq - b.seq);
   }
 
   // ============================================

@@ -30,6 +30,7 @@ const state = {
   unread: new Map(),   // name -> count
   lastRendered: null,  // anchor for message grouping
   collapsed: new Set(),// folded rail sections
+  fileScope: 'channel',// which folder the files modal is showing
   peerViews: new Map(),// peerId -> webview element
   activePeerId: null,
 };
@@ -89,6 +90,24 @@ const el = {
   winClose: document.getElementById('win-close'),
   togglePeers: document.getElementById('toggle-peers'),
   toasts: document.getElementById('toasts'),
+  openFiles: document.getElementById('open-files'),
+  filesModal: document.getElementById('files-modal'),
+  filesModalClose: document.getElementById('files-modal-close'),
+  scopeChannel: document.getElementById('scope-channel'),
+  scopeGlobal: document.getElementById('scope-global'),
+  filesScopeNote: document.getElementById('files-scope-note'),
+  fileList: document.getElementById('file-list'),
+  filesHint: document.getElementById('files-hint'),
+  filesAdd: document.getElementById('files-add'),
+  channelMenuButton: document.getElementById('channel-menu-button'),
+  channelMenu: document.getElementById('channel-menu'),
+  actionExport: document.getElementById('action-export'),
+  actionClear: document.getElementById('action-clear'),
+  confirmModal: document.getElementById('confirm-modal'),
+  confirmTitle: document.getElementById('confirm-title'),
+  confirmBody: document.getElementById('confirm-body'),
+  confirmCancel: document.getElementById('confirm-cancel'),
+  confirmAccept: document.getElementById('confirm-accept'),
 };
 
 // ============================================
@@ -112,6 +131,8 @@ const ICONS = {
   alert: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5M12 16.2v.1"/>',
   trash: '<path d="M4 7h16M9.5 7V5h5v2M6.5 7l1 13h9l1-13"/>',
   monitor: '<rect x="3" y="4" width="18" height="13" rx="1.5"/><path d="M9 21h6M12 17v4"/>',
+  file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
+  download: '<path d="M12 4v11M7.5 11l4.5 4.5 4.5-4.5"/><path d="M5 19h14"/>',
 };
 
 /** Inline SVG markup for an icon, sized by CSS rather than by attribute. */
@@ -895,6 +916,215 @@ el.winMaximize.onclick = async () => renderWindowState(await window.clanker.togg
 window.clanker.on('window:state', ({ maximized }) => renderWindowState(maximized));
 
 // ============================================
+// Confirm dialog
+// ============================================
+
+/**
+ * A themed confirm, resolving true or false.
+ *
+ * Destructive actions must never be gated by a browser dialog: it ignores the
+ * theme, cannot be styled, and looks like a different application.
+ */
+function confirmAction({ title, body, confirmLabel = 'Confirm' }) {
+  el.confirmTitle.textContent = title;
+  el.confirmBody.textContent = body;
+  el.confirmAccept.textContent = confirmLabel;
+  el.confirmModal.hidden = false;
+  el.confirmAccept.focus();
+
+  return new Promise((resolve) => {
+    const finish = (answer) => {
+      el.confirmModal.hidden = true;
+      el.confirmAccept.onclick = null;
+      el.confirmCancel.onclick = null;
+      el.confirmModal.onclick = null;
+      resolve(answer);
+    };
+    el.confirmAccept.onclick = () => finish(true);
+    el.confirmCancel.onclick = () => finish(false);
+    el.confirmModal.onclick = (event) => {
+      if (event.target === el.confirmModal) finish(false);
+    };
+  });
+}
+
+// ============================================
+// Shared files
+// ============================================
+
+function formatBytes(size) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function openFilesModal(scope = 'channel') {
+  state.fileScope = scope;
+  el.filesModal.hidden = false;
+  renderFileScope();
+}
+
+function renderFileScope() {
+  const isGlobal = state.fileScope === 'global';
+  el.scopeChannel.classList.toggle('is-active', !isGlobal);
+  el.scopeGlobal.classList.toggle('is-active', isGlobal);
+  el.scopeChannel.setAttribute('aria-selected', String(!isGlobal));
+  el.scopeGlobal.setAttribute('aria-selected', String(isGlobal));
+
+  el.filesScopeNote.textContent = isGlobal
+    ? 'Visible to every agent, whatever channel it is working in.'
+    : `Shared by the members of #${state.activeChannel}.`;
+
+  renderFileList();
+}
+
+async function renderFileList() {
+  const scope = state.fileScope;
+  const channel = scope === 'global' ? null : state.activeChannel;
+
+  let files = [];
+  try {
+    files = await window.clanker.listFiles(scope, channel);
+  } catch (error) {
+    toast(`Could not list files: ${error.message}`);
+    return;
+  }
+
+  el.filesHint.textContent = files.length
+    ? `${files.length} file${files.length === 1 ? '' : 's'}`
+    : '';
+
+  if (!files.length) {
+    el.fileList.innerHTML = `
+      <div class="empty-state">
+        <strong>No files here yet.</strong>
+        <p>Add reference material both you and the agents can reach. Agents use
+        <code>write_file</code>, and need the matching write permission for this scope.</p>
+      </div>`;
+    return;
+  }
+
+  el.fileList.innerHTML = '';
+  for (const file of files) {
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.innerHTML = `
+      <span class="file-icon">${icon('file')}</span>
+      <span class="file-text">
+        <span class="file-name">${escapeHtml(file.name)}</span>
+        <span class="file-meta">${formatBytes(file.size)} · @${escapeHtml(file.addedBy)}${
+      file.description ? ` · ${escapeHtml(file.description)}` : ''
+    }</span>
+      </span>
+      <span class="file-actions">
+        <button class="icon-button" data-save aria-label="Save ${escapeHtml(file.name)}">
+          ${icon('download')}
+        </button>
+        <button class="icon-button" data-delete aria-label="Delete ${escapeHtml(file.name)}">
+          ${icon('trash')}
+        </button>
+      </span>
+    `;
+
+    row.querySelector('[data-save]').onclick = async () => {
+      try {
+        const saved = await window.clanker.saveFileAs(scope, channel, file.name);
+        if (saved) toast(`Saved to ${saved}`, 'ok');
+      } catch (error) {
+        toast(`Could not save ${file.name}: ${error.message}`);
+      }
+    };
+
+    row.querySelector('[data-delete]').onclick = async () => {
+      const sure = await confirmAction({
+        title: `Delete ${file.name}?`,
+        body: 'This removes it for everyone with access to this folder, and cannot be undone.',
+        confirmLabel: 'Delete',
+      });
+      if (!sure) return;
+
+      try {
+        await window.clanker.deleteFile(scope, channel, file.name);
+        renderFileList();
+      } catch (error) {
+        toast(`Could not delete ${file.name}: ${error.message}`);
+      }
+    };
+
+    el.fileList.appendChild(row);
+  }
+}
+
+el.openFiles.onclick = () => openFilesModal('channel');
+el.filesModalClose.onclick = () => (el.filesModal.hidden = true);
+el.scopeChannel.onclick = () => ((state.fileScope = 'channel'), renderFileScope());
+el.scopeGlobal.onclick = () => ((state.fileScope = 'global'), renderFileScope());
+
+el.filesModal.onclick = (event) => {
+  if (event.target === el.filesModal) el.filesModal.hidden = true;
+};
+
+el.filesAdd.onclick = () =>
+  withBusy(el.filesAdd, async () => {
+    const channel = state.fileScope === 'global' ? null : state.activeChannel;
+    try {
+      const added = await window.clanker.addFiles(state.fileScope, channel);
+      if (added.length) toast(`Added ${added.length} file(s).`, 'ok');
+      renderFileList();
+    } catch (error) {
+      toast(`Could not add files: ${error.message}`);
+    }
+  });
+
+// ============================================
+// Channel actions
+// ============================================
+
+function toggleChannelMenu(show) {
+  el.channelMenu.hidden = !show;
+  el.channelMenuButton.setAttribute('aria-expanded', String(show));
+}
+
+el.channelMenuButton.onclick = () => toggleChannelMenu(el.channelMenu.hidden);
+
+document.addEventListener('click', (event) => {
+  if (!el.channelMenu.hidden && !event.target.closest('.channel-menu-wrap')) {
+    toggleChannelMenu(false);
+  }
+});
+
+el.actionExport.onclick = async () => {
+  toggleChannelMenu(false);
+  try {
+    const saved = await window.clanker.exportChannel(state.activeChannel);
+    if (saved) toast(`Transcript exported to ${saved}`, 'ok');
+  } catch (error) {
+    toast(`Could not export: ${error.message}`);
+  }
+};
+
+el.actionClear.onclick = async () => {
+  toggleChannelMenu(false);
+  const channel = state.activeChannel;
+
+  const sure = await confirmAction({
+    title: `Clear #${channel}?`,
+    body:
+      'Every message in this channel is deleted permanently, for everyone. Files in the ' +
+      'channel folder are kept. Export the transcript first if you want a copy.',
+    confirmLabel: 'Clear history',
+  });
+  if (!sure) return;
+
+  try {
+    const removed = await window.clanker.clearChannel(channel);
+    toast(`Cleared ${removed} message${removed === 1 ? '' : 's'} from #${channel}.`, 'ok');
+  } catch (error) {
+    toast(`Could not clear #${channel}: ${error.message}`);
+  }
+};
+
+// ============================================
 // Group settings modal
 // ============================================
 
@@ -1346,6 +1576,16 @@ window.clanker.on('hub:task', (task) => {
 
   renderTaskBadge();
   if (state.view === 'tasks') renderTaskBoard();
+});
+
+window.clanker.on('hub:cleared', ({ name }) => {
+  state.unread.set(name, 0);
+  if (name === state.activeChannel) loadTranscript(name);
+  renderRail();
+});
+
+window.clanker.on('hub:files', () => {
+  if (!el.filesModal.hidden) renderFileList();
 });
 
 window.clanker.on('hub:settings', (settings) => {

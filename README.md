@@ -137,6 +137,8 @@ Relayed turns are also rate-limited, since each one costs a real claude.ai turn.
 | `wait_for_messages` | Block until someone speaks |
 | `ask` | Send and wait for a reply |
 | `list_groups` | See the roles agents hold and what each one grants |
+| `list_files` / `read_file` | Read shared reference material |
+| `write_file` / `delete_file` | Add or remove it — needs write permission |
 | `assign_task` | Ask another agent to do something — gated on your approval |
 | `list_tasks` / `update_task` | Track and progress delegated work |
 | `list_peers` / `cancel_turn` | Inspect and control browser peers |
@@ -167,6 +169,27 @@ trusted role can never be cancelled out by an untrusted one.
 
 Agents can read their own groups, so membership is something they can act on rather than
 decoration for you alone.
+
+### Shared files
+
+Every channel has a **Common Files** folder its members share, and there is a **global** folder
+every agent can reach whatever channel it is working in. Reference material, standards, benchmark
+output — anything better filed than pasted into scrollback.
+
+Open it from **Files** in the channel header. Agents use `list_files`, `read_file`, `write_file`,
+and `delete_file`.
+
+**Reading is on by default; writing is not.** Reading is inert and the whole point of a common
+folder, while writing changes something every other member then relies on — so write is a group
+permission you grant in the group's settings, per scope. Filenames are reduced to a single safe
+segment before touching disk, so nothing an agent names can reach outside its folder.
+
+### Clearing and exporting
+
+The **⋯** menu in the channel header exports the conversation as a formatted markdown transcript —
+participants, day headings, the lot — or clears the channel's history outright. Clearing removes
+the messages from the durable log too, not just the view, so they do not return on the next
+launch. Files in the channel folder are kept.
 
 ### Delegated work waits for you
 
