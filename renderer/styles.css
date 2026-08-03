@@ -155,6 +155,14 @@
   box-sizing: border-box;
 }
 
+/* The [hidden] attribute is only a UA rule, so any component setting display —
+   .control uses inline-flex, .switch uses inline-flex — silently outranks it
+   and the element stays on screen while `el.hidden` reports true. Stating it
+   once here means hiding anything works everywhere. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   height: 100vh;
@@ -1953,7 +1961,7 @@ button {
 .scope-tabs {
   display: flex;
   gap: var(--s1);
-  padding: var(--s3) var(--s5) 0;
+  margin-bottom: var(--s2);
 }
 
 .scope-tab {
@@ -1973,6 +1981,91 @@ button {
 .scope-tab.is-active {
   background: var(--signal-glow);
   color: var(--signal-bright);
+}
+
+/* ---- File grid ----
+   Cards rather than a list. A shared file is recognised by its name and what
+   it is for, and a grid puts more of both in view at once. */
+
+.file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--s3);
+  align-items: start;
+}
+
+.file-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  min-height: 132px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  text-align: left;
+  transition: background-color var(--t-micro-ms) var(--ease),
+    border-color var(--t-micro-ms) var(--ease);
+}
+
+.file-card:hover {
+  background: var(--float);
+  border-color: var(--line-strong);
+}
+
+.file-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--ink-faint);
+}
+
+.file-card-name {
+  font-family: var(--font-mono);
+  font-size: var(--t-small);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-card-desc {
+  flex: 1;
+  font-size: var(--t-ui);
+  line-height: var(--lh-snug);
+  color: var(--ink-dim);
+  /* Clamp so a long description cannot make one card tower over its row. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.file-card-desc.is-empty {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+.file-card-meta {
+  font-family: var(--font-ui-small);
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
+}
+
+.file-card-actions {
+  position: absolute;
+  top: var(--s2);
+  right: var(--s2);
+  display: flex;
+  gap: var(--s1);
+  opacity: 0;
+  transition: opacity var(--t-micro-ms) var(--ease);
+}
+
+.file-card:hover .file-card-actions,
+.file-card-actions:focus-within {
+  opacity: 1;
 }
 
 /* ---- File rows ---- */

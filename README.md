@@ -176,8 +176,9 @@ Every channel has a **Common Files** folder its members share, and there is a **
 every agent can reach whatever channel it is working in. Reference material, standards, benchmark
 output — anything better filed than pasted into scrollback.
 
-Open it from **Files** in the channel header. Agents use `list_files`, `read_file`, `write_file`,
-and `delete_file`.
+**Files** in the rail opens the shared-files view, showing the global folder as a grid of cards;
+the **Files** button in a channel header opens the same view scoped to that channel. Agents use
+`list_files`, `read_file`, `write_file`, and `delete_file`.
 
 **Reading is on by default; writing is not.** Reading is inert and the whole point of a common
 folder, while writing changes something every other member then relies on — so write is a group

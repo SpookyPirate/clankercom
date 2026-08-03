@@ -91,13 +91,13 @@ const el = {
   togglePeers: document.getElementById('toggle-peers'),
   toasts: document.getElementById('toasts'),
   openFiles: document.getElementById('open-files'),
-  filesModal: document.getElementById('files-modal'),
-  filesModalClose: document.getElementById('files-modal-close'),
+  openGlobalFiles: document.getElementById('open-global-files'),
+  filesView: document.getElementById('files-view'),
+  channelMenuWrap: document.querySelector('.channel-menu-wrap'),
   scopeChannel: document.getElementById('scope-channel'),
   scopeGlobal: document.getElementById('scope-global'),
   filesScopeNote: document.getElementById('files-scope-note'),
   fileList: document.getElementById('file-list'),
-  filesHint: document.getElementById('files-hint'),
   filesAdd: document.getElementById('files-add'),
   channelMenuButton: document.getElementById('channel-menu-button'),
   channelMenu: document.getElementById('channel-menu'),
@@ -642,15 +642,8 @@ async function selectChannel(channelName) {
   const channel = state.channels.get(channelName);
   if (!channel) return;
 
-  // Selecting a channel always leaves the task board.
-  state.view = 'channel';
-  el.transcript.hidden = false;
-  el.taskBoard.hidden = true;
-  el.composerWrap.hidden = false;
-  el.netStrip.hidden = false;
-  el.autoApproveWrap.hidden = true;
-
   state.activeChannel = channelName;
+  setView('channel');
   state.unread.set(channelName, 0);
 
   el.channelName.textContent = channelLabel(channel);
@@ -958,10 +951,9 @@ function formatBytes(size) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function openFilesModal(scope = 'channel') {
+function openFiles(scope) {
   state.fileScope = scope;
-  el.filesModal.hidden = false;
-  renderFileScope();
+  setView('files');
 }
 
 function renderFileScope() {
@@ -971,6 +963,7 @@ function renderFileScope() {
   el.scopeChannel.setAttribute('aria-selected', String(!isGlobal));
   el.scopeGlobal.setAttribute('aria-selected', String(isGlobal));
 
+  el.scopeChannel.disabled = !state.activeChannel;
   el.filesScopeNote.textContent = isGlobal
     ? 'Visible to every agent, whatever channel it is working in.'
     : `Shared by the members of #${state.activeChannel}.`;
@@ -990,79 +983,84 @@ async function renderFileList() {
     return;
   }
 
-  el.filesHint.textContent = files.length
-    ? `${files.length} file${files.length === 1 ? '' : 's'}`
-    : '';
-
   if (!files.length) {
     el.fileList.innerHTML = `
       <div class="empty-state">
         <strong>No files here yet.</strong>
-        <p>Add reference material both you and the agents can reach. Agents use
-        <code>write_file</code>, and need the matching write permission for this scope.</p>
+        <p>Shared reference material both you and the agents can reach — standards, results,
+        anything better filed than pasted into scrollback.</p>
+        <p>Agents add them with <code>write_file</code>, which needs write permission for this
+        scope. You can add them here at any time.</p>
       </div>`;
     return;
   }
 
   el.fileList.innerHTML = '';
   for (const file of files) {
-    const row = document.createElement('div');
-    row.className = 'file-row';
-    row.innerHTML = `
-      <span class="file-icon">${icon('file')}</span>
-      <span class="file-text">
-        <span class="file-name">${escapeHtml(file.name)}</span>
-        <span class="file-meta">${formatBytes(file.size)} · @${escapeHtml(file.addedBy)}${
-      file.description ? ` · ${escapeHtml(file.description)}` : ''
-    }</span>
-      </span>
-      <span class="file-actions">
-        <button class="icon-button" data-save aria-label="Save ${escapeHtml(file.name)}">
-          ${icon('download')}
-        </button>
-        <button class="icon-button" data-delete aria-label="Delete ${escapeHtml(file.name)}">
-          ${icon('trash')}
-        </button>
-      </span>
-    `;
-
-    row.querySelector('[data-save]').onclick = async () => {
-      try {
-        const saved = await window.clanker.saveFileAs(scope, channel, file.name);
-        if (saved) toast(`Saved to ${saved}`, 'ok');
-      } catch (error) {
-        toast(`Could not save ${file.name}: ${error.message}`);
-      }
-    };
-
-    row.querySelector('[data-delete]').onclick = async () => {
-      const sure = await confirmAction({
-        title: `Delete ${file.name}?`,
-        body: 'This removes it for everyone with access to this folder, and cannot be undone.',
-        confirmLabel: 'Delete',
-      });
-      if (!sure) return;
-
-      try {
-        await window.clanker.deleteFile(scope, channel, file.name);
-        renderFileList();
-      } catch (error) {
-        toast(`Could not delete ${file.name}: ${error.message}`);
-      }
-    };
-
-    el.fileList.appendChild(row);
+    el.fileList.appendChild(renderFileCard(file, scope, channel));
   }
 }
 
-el.openFiles.onclick = () => openFilesModal('channel');
-el.filesModalClose.onclick = () => (el.filesModal.hidden = true);
+function renderFileCard(file, scope, channel) {
+  const card = document.createElement('div');
+  card.className = 'file-card';
+
+  const edited = new Date(file.updatedAt || file.addedAt).toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+  });
+
+  card.innerHTML = `
+    <div class="file-card-head">
+      ${icon('file')}
+      <span class="file-card-name">${escapeHtml(file.name)}</span>
+    </div>
+    <div class="file-card-desc${file.description ? '' : ' is-empty'}">${
+      escapeHtml(file.description || 'No description')
+    }</div>
+    <div class="file-card-meta">${formatBytes(file.size)} · @${escapeHtml(file.addedBy)} · ${edited}</div>
+    <div class="file-card-actions">
+      <button class="icon-button" data-save aria-label="Save ${escapeHtml(file.name)}">
+        ${icon('download')}
+      </button>
+      <button class="icon-button" data-delete aria-label="Delete ${escapeHtml(file.name)}">
+        ${icon('trash')}
+      </button>
+    </div>
+  `;
+
+  card.querySelector('[data-save]').onclick = async () => {
+    try {
+      const saved = await window.clanker.saveFileAs(scope, channel, file.name);
+      if (saved) toast(`Saved to ${saved}`, 'ok');
+    } catch (error) {
+      toast(`Could not save ${file.name}: ${error.message}`);
+    }
+  };
+
+  card.querySelector('[data-delete]').onclick = async () => {
+    const sure = await confirmAction({
+      title: `Delete ${file.name}?`,
+      body: 'This removes it for everyone with access to this folder, and cannot be undone.',
+      confirmLabel: 'Delete',
+    });
+    if (!sure) return;
+
+    try {
+      await window.clanker.deleteFile(scope, channel, file.name);
+      renderFileList();
+    } catch (error) {
+      toast(`Could not delete ${file.name}: ${error.message}`);
+    }
+  };
+
+  return card;
+}
+
+el.openFiles.onclick = () => openFiles('channel');
+el.openGlobalFiles.onclick = () => openFiles('global');
 el.scopeChannel.onclick = () => ((state.fileScope = 'channel'), renderFileScope());
 el.scopeGlobal.onclick = () => ((state.fileScope = 'global'), renderFileScope());
-
-el.filesModal.onclick = (event) => {
-  if (event.target === el.filesModal) el.filesModal.hidden = true;
-};
 
 el.filesAdd.onclick = () =>
   withBusy(el.filesAdd, async () => {
@@ -1267,22 +1265,42 @@ const TASK_STATUS_CLASS = {
   cancelled: 'is-closed',
 };
 
-/** Switch the main pane between the channel transcript and the task board. */
+/**
+ * Switch the main pane, and decide what the header carries.
+ *
+ * Every view's control visibility is resolved here rather than toggled at the
+ * call sites. Doing it piecemeal is what left channel actions — Files, export,
+ * clear — sitting on the Tasks view, offering to export a channel that was not
+ * open.
+ */
 function setView(view) {
   state.view = view;
-  const showingTasks = view === 'tasks';
+  const isChannel = view === 'channel';
+  const isTasks = view === 'tasks';
+  const isFiles = view === 'files';
 
-  el.transcript.hidden = showingTasks;
-  el.taskBoard.hidden = !showingTasks;
-  el.composerWrap.hidden = showingTasks;
-  el.netStrip.hidden = showingTasks;
-  el.autoApproveWrap.hidden = !showingTasks;
+  el.transcript.hidden = !isChannel;
+  el.composerWrap.hidden = !isChannel;
+  el.netStrip.hidden = !isChannel;
+  el.taskBoard.hidden = !isTasks;
+  el.filesView.hidden = !isFiles;
 
-  if (showingTasks) {
+  // Channel-scoped actions only exist where a channel is open.
+  el.openFiles.hidden = !isChannel;
+  el.channelMenuWrap.hidden = !isChannel;
+  el.autoApproveWrap.hidden = !isTasks;
+  el.filesAdd.hidden = !isFiles;
+
+  if (isTasks) {
     el.channelName.textContent = 'Tasks';
     el.channelTopic.textContent = 'Work agents have asked each other to do';
     renderTaskBoard();
+  } else if (isFiles) {
+    el.channelName.textContent = 'Files';
+    el.channelTopic.textContent = 'Reference material people and agents share';
+    renderFileScope();
   }
+
   renderRail();
 }
 
@@ -1369,6 +1387,7 @@ function renderTaskBadge() {
   el.tasksBadge.hidden = pending === 0;
   el.tasksBadge.textContent = pending > 99 ? '99+' : String(pending);
   el.openTasks.classList.toggle('is-active', state.view === 'tasks');
+  el.openGlobalFiles.classList.toggle('is-active', state.view === 'files');
 }
 
 el.openTasks.onclick = () => setView('tasks');
@@ -1585,7 +1604,7 @@ window.clanker.on('hub:cleared', ({ name }) => {
 });
 
 window.clanker.on('hub:files', () => {
-  if (!el.filesModal.hidden) renderFileList();
+  if (state.view === 'files') renderFileList();
 });
 
 window.clanker.on('hub:settings', (settings) => {

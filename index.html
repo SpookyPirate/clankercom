@@ -51,6 +51,11 @@
           <span class="label">Tasks</span>
           <span class="unread" id="tasks-badge" hidden>0</span>
         </button>
+
+        <button class="rail-item" id="open-global-files">
+          <span class="sigil"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+          <span class="label">Files</span>
+        </button>
       </section>
 
       <section class="rail-section" data-section="channels">
@@ -163,6 +168,7 @@
       </label>
 
       <button class="control control--ghost" id="open-files">Files</button>
+      <button class="control control--primary" id="files-add" hidden>Add files…</button>
 
       <div class="channel-menu-wrap">
         <button class="icon-button" id="channel-menu-button" aria-label="Channel actions"
@@ -191,6 +197,17 @@
 
     <div class="transcript" id="transcript" role="log" aria-label="Channel transcript"></div>
     <div class="transcript" id="task-board" hidden aria-label="Tasks"></div>
+
+    <div class="transcript" id="files-view" hidden aria-label="Shared files">
+      <div class="scope-tabs" role="tablist">
+        <button class="scope-tab" id="scope-global" role="tab" aria-selected="true">Global</button>
+        <button class="scope-tab" id="scope-channel" role="tab" aria-selected="false">
+          This channel
+        </button>
+      </div>
+      <p class="modal-section-note" id="files-scope-note"></p>
+      <div class="file-grid" id="file-list"></div>
+    </div>
 
     <div class="composer" id="composer-wrap">
       <div class="composer-box">
@@ -268,38 +285,6 @@
       <footer class="modal-footer">
         <button class="control control--ghost control--danger" id="group-delete">Delete group</button>
         <button class="control control--primary" id="group-done">Done</button>
-      </footer>
-    </div>
-  </div>
-
-  <!-- ============ Shared files ============
-       Reference material both people and agents can reach. A channel folder
-       belongs to its members; the global folder is visible to every agent
-       whatever channel it is working in. -->
-  <div class="modal-backdrop" id="files-modal" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="files-modal-title">
-      <header class="modal-header">
-        <h2 class="modal-title" id="files-modal-title">Files</h2>
-        <button class="icon-button" id="files-modal-close" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-      </header>
-
-      <div class="scope-tabs" role="tablist">
-        <button class="scope-tab is-active" id="scope-channel" role="tab" aria-selected="true">
-          This channel
-        </button>
-        <button class="scope-tab" id="scope-global" role="tab" aria-selected="false">
-          Global
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <p class="modal-section-note" id="files-scope-note"></p>
-        <div id="file-list"></div>
-      </div>
-
-      <footer class="modal-footer">
-        <span class="files-hint" id="files-hint"></span>
-        <button class="control control--primary" id="files-add">Add files…</button>
       </footer>
     </div>
   </div>
