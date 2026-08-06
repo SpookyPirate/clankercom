@@ -381,8 +381,68 @@ async function verifyFilesAndHistory() {
   await reopened.close();
 }
 
+// ============================================
+// Identity across reconnects
+// ============================================
+
+/**
+ * A closed and reopened editor window should come back as itself. Before this,
+ * every reconnect minted claude-code-2, -3, -4 beside its own ghosts.
+ */
+async function verifyReconnectIdentity() {
+  console.log('\nidentity across reconnects');
+
+  const { handlers } = require('../src/mcp/handlers');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-identity-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  const mcpHandles = () =>
+    hub.listAgents().filter((agent) => agent.kind === 'mcp').map((agent) => agent.handle);
+
+  const connect = (id, clientName) => {
+    const context = { hub, peers: null, session: { id, clientInfo: { name: clientName } } };
+    handlers.whoami({}, context);
+    return context;
+  };
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const context = connect(`s${attempt}`, 'claude-code');
+    hub.setAgentStatus(context.session.agentId, 'offline');
+  }
+  check(
+    'a reconnecting client reclaims its own identity',
+    mcpHandles().length === 1 && mcpHandles()[0] === 'claude-code',
+    mcpHandles().join(', ')
+  );
+
+  // Two windows open at once are two agents, and the live one is never taken.
+  const first = connect('a', 'claude-code');
+  const second = connect('b', 'claude-code');
+  check(
+    'two concurrent clients stay distinct',
+    mcpHandles().length === 2 && mcpHandles().includes('claude-code-2'),
+    mcpHandles().join(', ')
+  );
+  check('a live holder is never displaced', hub.getAgent(first.session.agentId).handle === 'claude-code');
+
+  // A handle claimed on purpose is not reclaimable, even once offline.
+  handlers.join_hub({ name: 'Payments API Migration' }, second);
+  hub.setAgentStatus(second.session.agentId, 'offline');
+  connect('c', 'payments-api-migration');
+  check(
+    'a deliberately claimed handle is never stolen',
+    hub.getAgent(second.session.agentId).handle === 'payments-api-migration',
+    mcpHandles().join(', ')
+  );
+
+  await store.close();
+}
+
 async function main() {
   await verifyPortSelection();
+  await verifyReconnectIdentity();
   await verifyGroupsAndTasks();
   await verifyFilesAndHistory();
 

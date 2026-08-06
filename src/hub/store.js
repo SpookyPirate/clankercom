@@ -183,6 +183,30 @@ class Store {
   }
 
   /**
+   * Walk the durable log, keeping whatever a predicate accepts.
+   *
+   * Streams by line rather than parsing the whole file into an array, so a
+   * large transcript costs time but not proportional memory.
+   */
+  async scanMessages(predicate) {
+    if (!fs.existsSync(this.messagesPath)) return [];
+
+    const raw = await fs.promises.readFile(this.messagesPath, 'utf8');
+    const kept = [];
+
+    for (const line of raw.split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const message = JSON.parse(line);
+        if (predicate(message)) kept.push(message);
+      } catch {
+        continue;
+      }
+    }
+    return kept;
+  }
+
+  /**
    * Scan the on-disk log for messages in a channel older than the resident
    * window. Linear read — acceptable because this is only hit when scrolling
    * far back in the UI, never on the hot messaging path.

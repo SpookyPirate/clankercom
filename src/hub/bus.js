@@ -822,6 +822,62 @@ class Hub extends EventEmitter {
     return lines.join('\n');
   }
 
+  // ============================================
+  // Search
+  // ============================================
+
+  /**
+   * Find messages by text, across the whole transcript rather than the
+   * resident window.
+   *
+   * This is the one read that must reach disk. `read_messages` returns the
+   * most recent N and `since_seq` only moves forward, so without this there is
+   * no way for anyone — human or agent — to look backward for a topic. For an
+   * app whose value is accumulated context, that was the sharpest gap in it.
+   *
+   * A linear scan, deliberately. The transcript is one file of a few tens of
+   * megabytes at worst, this runs on an explicit user action rather than on
+   * the messaging path, and an index would need maintaining against a log that
+   * is otherwise append-only. If search ever becomes hot, that is the signal
+   * to reconsider — not before.
+   */
+  async search({ query, channelId = null, fromHandle = null, limit = 50, viewerId = null }) {
+    const needle = String(query || '').trim().toLowerCase();
+    if (!needle && !fromHandle) return [];
+
+    const visible = this._visibleChannelIds(viewerId);
+    const matches = (message) => {
+      if (channelId && message.channelId !== channelId) return false;
+      if (visible && !visible.has(message.channelId)) return false;
+      if (fromHandle && message.authorHandle !== fromHandle) return false;
+      return !needle || message.text.toLowerCase().includes(needle);
+    };
+
+    const found = new Map();
+    for (const message of await this.store.scanMessages(matches)) found.set(message.id, message);
+    // The resident window is authoritative for anything recent, and covers
+    // messages written since the last flush to disk.
+    for (const message of this.messages) if (matches(message)) found.set(message.id, message);
+
+    return Array.from(found.values())
+      .sort((a, b) => b.seq - a.seq)
+      .slice(0, Math.max(1, Math.min(LIMITS.maxReadLimit, limit)));
+  }
+
+  /**
+   * Which channels a searcher may see. A DM must never surface in someone
+   * else's results. Null means no restriction, for the console's own searches.
+   */
+  _visibleChannelIds(viewerId) {
+    if (!viewerId) return null;
+
+    const ids = new Set();
+    for (const channel of this.channels.values()) {
+      if (!channel.isDm || channel.members.has(viewerId)) ids.add(channel.id);
+    }
+    return ids;
+  }
+
   /** Every message in a channel, resident window plus on-disk history. */
   async allChannelMessages(channelId) {
     const resident = this.messages.filter((message) => message.channelId === channelId);

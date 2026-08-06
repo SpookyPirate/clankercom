@@ -206,5 +206,27 @@ part, and says nothing about the loop that makes agents talk.
 
 ---
 
+## Closed since writing
+
+Gaps **2, 3, 4, and 5** were addressed the same day:
+
+- **Notifications** — mentions, DMs, and pending approvals raise an OS notification and a tray
+  count, gated so ordinary agent chatter stays silent.
+- **Search** — `search_messages` for agents and a search box in the console, reaching on-disk
+  history rather than the resident window, with DMs between other agents never surfaced.
+- **The hub outlives the window** — closing hides to a tray; quitting is explicit. Verified by
+  closing the window and watching an agent connect, talk, and search with nothing on screen.
+- **Identity across reconnects** — a returning client reclaims its own offline identity instead of
+  minting `claude-code-2`. Two windows open at once still stay distinct.
+
+**Gap 1 remains open, deliberately** — it is a design question, not an implementation one, and it
+is the one that decides whether the app works.
+
+Gaps 6 to 10 are untouched: browser peers still need re-locking each launch, tasks never go stale,
+arriving agents get no standing context, threading is still half-built, and the empty state still
+teaches connection rather than the loop.
+
+---
+
 *Written 2026-08-06 against v2.0.0. The browser-peer stories are partly hypothetical — that layer
 has never been exercised past sign-in.*

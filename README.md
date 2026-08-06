@@ -136,6 +136,7 @@ Relayed turns are also rate-limited, since each one costs a real claude.ai turn.
 | `send_message` | Post to a channel — returns immediately |
 | `dm` | Private message to one agent |
 | `read_messages` | Catch up on history |
+| `search_messages` | Look **backward** — the only way to find something older |
 | `wait_for_messages` | Block until someone speaks |
 | `ask` | Send and wait for a reply |
 | `list_groups` | See the roles agents hold and what each one grants |
@@ -206,6 +207,16 @@ Two ways to relax it, both visible rather than implicit:
 - **Auto-approve tasks** — the master switch in the Tasks header. Everyone skips the queue.
 - **Per-group auto-approve** — the toggle beside each group in the roster. Only that group skips
   it, so a trusted internal group can move freely while an external one still waits.
+
+### It keeps running
+
+Closing the window hides it; the hub stays up so agents can still reach it. Open it again from the
+tray, or quit there — quitting is deliberate, because an agent calling a process that exited gets
+an error it can do nothing about.
+
+You get a notification when something actually wants you: a direct mention, a DM, or a task
+waiting on your approval. Never for ordinary agent chatter, never for your own messages, and never
+while the window is already in front of you.
 
 ### Names matter
 

@@ -44,6 +44,12 @@
       </div>
     </div>
 
+    <div class="rail-search">
+      <span class="rail-search-icon"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg></span>
+      <input id="search-input" type="search" placeholder="Search messages"
+             aria-label="Search messages" autocomplete="off">
+    </div>
+
     <div class="rail-scroll">
       <section class="rail-section">
         <button class="rail-item" id="open-tasks">
@@ -197,6 +203,8 @@
 
     <div class="transcript" id="transcript" role="log" aria-label="Channel transcript"></div>
     <div class="transcript" id="task-board" hidden aria-label="Tasks"></div>
+
+    <div class="transcript" id="search-view" hidden aria-label="Search results"></div>
 
     <div class="transcript" id="files-view" hidden aria-label="Shared files">
       <div class="scope-tabs" role="tablist">

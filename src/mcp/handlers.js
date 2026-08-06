@@ -100,16 +100,37 @@ function ensureIdentity(context) {
   return agent;
 }
 
-/** Append a numeric suffix until the handle is free. */
+/**
+ * Pick the handle an auto-registering client should get.
+ *
+ * A client that reconnects — a closed and reopened editor window, a restarted
+ * process — should come back as itself rather than accumulating
+ * `claude-code-2`, `-3`, `-4` beside its own ghosts. So an existing identity
+ * is reclaimed when it is safe to do so.
+ *
+ * "Safe" means the holder is **offline** and never claimed the handle
+ * deliberately. Two windows open at once are two agents and must stay
+ * distinct, which is exactly what the offline test preserves: a live holder is
+ * never displaced, and the newcomer takes a suffix as before.
+ */
 function uniqueHandle(hub, desired) {
   const base = slugify(desired, 'agent');
-  if (!hub.getAgentByHandle(base)) return base;
+
+  const holder = hub.getAgentByHandle(base);
+  if (!holder) return base;
+  if (isReclaimable(holder)) return base;
 
   for (let suffix = 2; suffix < 100; suffix++) {
     const candidate = `${base}-${suffix}`;
-    if (!hub.getAgentByHandle(candidate)) return candidate;
+    const occupant = hub.getAgentByHandle(candidate);
+    if (!occupant || isReclaimable(occupant)) return candidate;
   }
   return `${base}-${Date.now().toString(36)}`;
+}
+
+/** An auto-derived identity whose connection is gone can be taken over. */
+function isReclaimable(agent) {
+  return agent.kind === 'mcp' && agent.status === 'offline' && !agent.handleClaimed;
 }
 
 /** Map an MCP client name onto a known platform for UI grouping. */
@@ -363,6 +384,39 @@ const handlers = {
       sinceSeq: args.since_seq ?? null,
     });
     return asText(formatTranscript(messages, { header: `#${channel.name}` }));
+  },
+
+  async search_messages(args, context) {
+    const { hub } = context;
+    const agent = ensureIdentity(context);
+
+    const from = args.from ? stripSigil(args.from) : null;
+    if (from && !hub.getAgentByHandle(from)) {
+      throw new Error(`no agent with handle "${from}". Call list_agents to see who is here.`);
+    }
+
+    const channel = args.channel ? requireChannel(hub, args.channel) : null;
+    const hits = await hub.search({
+      query: args.query,
+      channelId: channel?.id || null,
+      fromHandle: from,
+      limit: args.limit || 25,
+      viewerId: agent.id,
+    });
+
+    if (!hits.length) {
+      return asText(
+        `Nothing matched "${args.query}"${channel ? ` in #${channel.name}` : ''}` +
+          `${from ? ` from @${from}` : ''}.`
+      );
+    }
+
+    // Oldest-first in the output even though the search ranks newest-first, so
+    // a run of hits from one conversation reads in the order it happened.
+    const ordered = [...hits].sort((a, b) => a.seq - b.seq);
+    return asText(
+      formatTranscript(ordered, { header: `${hits.length} match(es) for "${args.query}"` })
+    );
   },
 
   async wait_for_messages(args, context) {

@@ -30,7 +30,8 @@ const state = {
   unread: new Map(),   // name -> count
   lastRendered: null,  // anchor for message grouping
   collapsed: new Set(),// folded rail sections
-  fileScope: 'channel',// which folder the files modal is showing
+  fileScope: 'channel',// which folder the files view is showing
+  searchQuery: '',     // guards against a stale response overwriting newer results
   peerViews: new Map(),// peerId -> webview element
   activePeerId: null,
 };
@@ -90,6 +91,8 @@ const el = {
   winClose: document.getElementById('win-close'),
   togglePeers: document.getElementById('toggle-peers'),
   toasts: document.getElementById('toasts'),
+  searchInput: document.getElementById('search-input'),
+  searchView: document.getElementById('search-view'),
   openFiles: document.getElementById('open-files'),
   openGlobalFiles: document.getElementById('open-global-files'),
   filesView: document.getElementById('files-view'),
@@ -642,6 +645,11 @@ async function selectChannel(channelName) {
   const channel = state.channels.get(channelName);
   if (!channel) return;
 
+  if (state.view === 'search') {
+    el.searchInput.value = '';
+    state.searchQuery = '';
+  }
+
   state.activeChannel = channelName;
   setView('channel');
   state.unread.set(channelName, 0);
@@ -907,6 +915,92 @@ el.winMaximize.onclick = async () => renderWindowState(await window.clanker.togg
 // Snapping and double-click-to-maximize happen in the OS, so the button state
 // has to follow the window rather than only its own clicks.
 window.clanker.on('window:state', ({ maximized }) => renderWindowState(maximized));
+
+// ============================================
+// Search
+// ============================================
+
+const SEARCH_DEBOUNCE_MS = 220;
+let searchTimer = null;
+
+/** Wrap the matched term so a reader can see *why* a result matched. */
+function highlight(text, query) {
+  const escaped = escapeHtml(text);
+  if (!query) return escaped;
+
+  const pattern = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  return escaped.replace(pattern, '<span class="search-hit">$1</span>');
+}
+
+async function runSearch(query) {
+  state.searchQuery = query;
+
+  if (!query.trim()) {
+    if (state.view === 'search') setView('channel');
+    return;
+  }
+
+  setView('search');
+  el.searchView.innerHTML = '<div class="empty-state">Searching…</div>';
+
+  let hits = [];
+  try {
+    hits = await window.clanker.search(query);
+  } catch (error) {
+    toast(`Search failed: ${error.message}`);
+    return;
+  }
+
+  // A late response from a query the user has already moved past would
+  // otherwise overwrite the results they are actually looking at.
+  if (state.searchQuery !== query) return;
+
+  if (!hits.length) {
+    el.searchView.innerHTML = `
+      <div class="empty-state">
+        <strong>Nothing matched “${escapeHtml(query)}”.</strong>
+        <p>Search covers every channel you can see, including history older than the
+        window kept in memory. Direct messages between other agents are never searched.</p>
+      </div>`;
+    return;
+  }
+
+  el.searchView.innerHTML = '';
+  const heading = document.createElement('div');
+  heading.className = 'task-group-heading';
+  heading.textContent = `${hits.length} match${hits.length === 1 ? '' : 'es'}`;
+  el.searchView.appendChild(heading);
+
+  for (const message of hits) {
+    const result = document.createElement('button');
+    result.className = 'search-result';
+    result.innerHTML = `
+      <div class="search-result-head">
+        <span class="search-result-channel">#${escapeHtml(message.channelName)}</span>
+        <span class="message-author">${escapeHtml(message.authorDisplayName || message.authorHandle)}</span>
+        <span class="message-time">${formatTime(message.ts)}</span>
+        <span class="message-seq">${message.seq}</span>
+      </div>
+      <div class="search-result-body">${highlight(message.text, query)}</div>
+    `;
+    // Landing in the conversation is the point of finding it.
+    result.onclick = () => selectChannel(message.channelName);
+    el.searchView.appendChild(result);
+  }
+}
+
+el.searchInput.addEventListener('input', (event) => {
+  clearTimeout(searchTimer);
+  const query = event.target.value;
+  searchTimer = setTimeout(() => runSearch(query), SEARCH_DEBOUNCE_MS);
+});
+
+el.searchInput.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  el.searchInput.value = '';
+  runSearch('');
+  el.searchInput.blur();
+});
 
 // ============================================
 // Confirm dialog
@@ -1278,12 +1372,14 @@ function setView(view) {
   const isChannel = view === 'channel';
   const isTasks = view === 'tasks';
   const isFiles = view === 'files';
+  const isSearch = view === 'search';
 
   el.transcript.hidden = !isChannel;
   el.composerWrap.hidden = !isChannel;
   el.netStrip.hidden = !isChannel;
   el.taskBoard.hidden = !isTasks;
   el.filesView.hidden = !isFiles;
+  el.searchView.hidden = !isSearch;
 
   // Channel-scoped actions only exist where a channel is open.
   el.openFiles.hidden = !isChannel;
@@ -1299,6 +1395,9 @@ function setView(view) {
     el.channelName.textContent = 'Files';
     el.channelTopic.textContent = 'Reference material people and agents share';
     renderFileScope();
+  } else if (isSearch) {
+    el.channelName.textContent = 'Search';
+    el.channelTopic.textContent = `Results for “${state.searchQuery}”`;
   }
 
   renderRail();
@@ -1605,6 +1704,11 @@ window.clanker.on('hub:cleared', ({ name }) => {
 
 window.clanker.on('hub:files', () => {
   if (state.view === 'files') renderFileList();
+});
+
+window.clanker.on('hub:reveal', ({ channel, view }) => {
+  if (view === 'tasks') return setView('tasks');
+  if (channel && state.channels.has(channel)) selectChannel(channel);
 });
 
 window.clanker.on('hub:settings', (settings) => {

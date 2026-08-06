@@ -14,7 +14,18 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { app, BrowserWindow, Menu, dialog, ipcMain, webContents, shell } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  Menu,
+  Notification,
+  Tray,
+  dialog,
+  ipcMain,
+  nativeImage,
+  webContents,
+  shell,
+} = require('electron');
 
 const { APP_NAME, DEFAULT_CHANNEL } = require('./src/config');
 const { Store } = require('./src/hub/store');
@@ -23,12 +34,20 @@ const { PeerManager } = require('./src/browser/peer-manager');
 const { createHubServer } = require('./src/mcp/http-server');
 
 let mainWindow = null;
+let tray = null;
 let store = null;
 let hub = null;
 let peers = null;
 let hubServer = null;
 let httpServer = null;
 let humanAgent = null;
+
+// Closing the window hides it; only an explicit Quit ends the process, because
+// the hub has to outlive the window for agents to reach it.
+let isQuitting = false;
+
+// What is waiting on the human, surfaced in the tray and the taskbar.
+let unreadCount = 0;
 
 // ============================================
 // Single instance
@@ -105,6 +124,121 @@ function forwardHubEvents() {
   hub.on('files:changed', (scope) => send('hub:files', scope));
   hub.on('channel:cleared', (channel) => send('hub:cleared', channel));
   peers.on('peers:changed', (list) => send('hub:peers', list));
+
+  hub.on('message', (message) => notifyIfForHuman(message));
+  hub.on('task:changed', (task) => notifyIfAwaitingApproval(task));
+}
+
+// ============================================
+// Notifications
+// ============================================
+
+/**
+ * Raise a notification when a message actually wants the human.
+ *
+ * Silent otherwise. A hub where agents talk constantly would be unusable if
+ * every message rang — so this fires only for a direct mention or a DM, never
+ * for the human's own messages, and never while the window already has focus,
+ * where the message is visible anyway.
+ */
+function notifyIfForHuman(message) {
+  if (message.kind !== 'message' || message.authorId === humanAgent?.id) return;
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()) return;
+
+  const channel = hub.getChannel(message.channelId);
+  const isDm = !!channel?.isDm && channel.members.has(humanAgent.id);
+  const mentionsYou = message.mentions.includes(humanAgent.handle);
+  if (!isDm && !mentionsYou) return;
+
+  raise({
+    title: isDm ? `${message.authorDisplayName}` : `${message.authorDisplayName} in #${channel.name}`,
+    body: message.text.slice(0, 220),
+    channel: channel?.name,
+  });
+}
+
+/** Work waiting on approval is the one thing the hub cannot proceed without. */
+function notifyIfAwaitingApproval(task) {
+  if (task.status !== 'pending_approval') return;
+
+  raise({
+    title: 'Task needs your approval',
+    body: `@${task.fromHandle} asked @${task.toHandle}: ${task.title}`,
+    view: 'tasks',
+  });
+}
+
+function raise({ title, body, channel = null, view = null }) {
+  unreadCount++;
+  renderAttention();
+
+  if (!Notification.isSupported()) return;
+
+  const notification = new Notification({ title, body, silent: false });
+  notification.on('click', () => {
+    revealWindow();
+    mainWindow?.webContents.send('hub:reveal', { channel, view });
+  });
+  notification.show();
+}
+
+/**
+ * Reflect the pending count where the operating system shows it: the tray
+ * tooltip, and the window title, which is what the taskbar reads.
+ */
+function renderAttention() {
+  const suffix = unreadCount > 0 ? ` (${unreadCount})` : '';
+  tray?.setToolTip(`${APP_NAME}${suffix || ' — running'}`);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setTitle(`${suffix ? suffix.trim() + ' ' : ''}${APP_NAME}`);
+    if (unreadCount > 0 && !mainWindow.isFocused()) mainWindow.flashFrame(true);
+  }
+}
+
+function clearAttention() {
+  unreadCount = 0;
+  mainWindow?.flashFrame(false);
+  renderAttention();
+}
+
+// ============================================
+// Tray
+// ============================================
+
+/**
+ * The hub is only useful if it is there when an agent calls. Closing the
+ * window used to end the process, so every agent's next request failed with
+ * "cannot reach the hub" — the tray is what makes running it a background
+ * service rather than an app you must remember to keep open.
+ */
+function createTray() {
+  const icon = nativeImage.createFromPath(path.join(__dirname, 'build', 'icon.ico'));
+  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: `Open ${APP_NAME}`, click: revealWindow },
+      { type: 'separator' },
+      {
+        label: 'Quit — agents lose the hub',
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    ])
+  );
+
+  tray.on('click', revealWindow);
+  renderAttention();
+}
+
+function revealWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return createWindow();
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
 }
 
 function createWindow() {
@@ -166,6 +300,35 @@ function createWindow() {
   };
   mainWindow.on('maximize', reportWindowState);
   mainWindow.on('unmaximize', reportWindowState);
+
+  // Looking at the window is the same as reading what was waiting.
+  mainWindow.on('focus', clearAttention);
+
+  // Closing hides. The hub keeps running, because an agent calling into a
+  // process that quit gets an error it cannot do anything about. Quitting is
+  // explicit, from the tray.
+  mainWindow.on('close', (event) => {
+    if (isQuitting) return;
+    event.preventDefault();
+    mainWindow.hide();
+    announceBackgroundOnce();
+  });
+}
+
+/**
+ * A window that vanishes with no explanation reads as a crash. Said once, the
+ * first time, then never again.
+ */
+let hasAnnouncedBackground = false;
+function announceBackgroundOnce() {
+  if (hasAnnouncedBackground || !Notification.isSupported()) return;
+  hasAnnouncedBackground = true;
+
+  new Notification({
+    title: `${APP_NAME} is still running`,
+    body: 'The hub stays up so agents can reach it. Open it from the tray, or quit there.',
+    silent: true,
+  }).show();
 }
 
 /**
@@ -301,6 +464,20 @@ ipcMain.handle('hub:removeAgent', async (_event, { agentId }) => {
 });
 
 // ============================================
+// IPC — search
+// ============================================
+
+ipcMain.handle('hub:search', async (_event, { query, channel, from, limit }) =>
+  hub.search({
+    query,
+    channelId: channel ? hub.getChannel(channel)?.id : null,
+    fromHandle: from || null,
+    limit: limit || 60,
+    viewerId: humanAgent.id,
+  })
+);
+
+// ============================================
 // IPC — shared files
 // ============================================
 
@@ -409,23 +586,32 @@ ipcMain.handle('peers:cancel', async (_event, { handle }) => peers.cancel(handle
 // ============================================
 
 app.whenReady().then(async () => {
+  // Without this, Windows attributes notifications to the Electron host and
+  // may drop them entirely.
+  app.setAppUserModelId('com.spookypirate.clankercom');
+
   try {
     await startHub();
   } catch (error) {
     console.error(`[${APP_NAME}] failed to start hub:`, error);
   }
+
   createWindow();
+  createTray();
 });
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-app.on('window-all-closed', () => app.quit());
+// Deliberately does not quit: the hub keeps serving agents with no window
+// open. Quit comes from the tray, which sets isQuitting first.
+app.on('window-all-closed', () => {});
 
 // Flush pending writes and release blocked long-polls before exiting, so
 // connected agents get a clean empty result instead of a dropped socket.
 app.on('before-quit', async (event) => {
+  isQuitting = true;
   if (!hub) return;
 
   event.preventDefault();
@@ -441,5 +627,6 @@ app.on('before-quit', async (event) => {
   }
 
   hub = null;
+  tray?.destroy();
   app.quit();
 });

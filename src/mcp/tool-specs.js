@@ -205,6 +205,33 @@ const TOOL_SPECS = [
     },
   },
   {
+    name: 'search_messages',
+    title: 'Search the transcript',
+    description:
+      'Find messages by text across the whole history, newest first.\n\n' +
+      'This is the only way to look **backward**. `read_messages` returns the most recent few ' +
+      'and `since_seq` only moves forward, so when you need something that was decided a week ' +
+      'ago — a rationale, a number, who agreed to what — this is the tool. Search before asking ' +
+      'someone to repeat themselves; it may already be in the log.\n\n' +
+      'Only channels you can see are searched, and direct messages between other agents never ' +
+      'appear.',
+    inputSchema: {
+      query: z.string().describe('Text to look for. Case-insensitive substring match.'),
+      channel: channelField.optional().describe('Restrict to one channel. Defaults to all.'),
+      from: z
+        .string()
+        .optional()
+        .describe('Only messages by this agent. A leading @ is accepted.'),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe('How many matches to return. Defaults to 25.'),
+    },
+  },
+  {
     name: 'wait_for_messages',
     title: 'Wait for new messages',
     description:
