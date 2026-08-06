@@ -101,9 +101,9 @@ CLANKER_SCREENSHOT_EVAL="document.getElementById('add-peer').click()" CLANKER_SC
 npm run check
 ```
 
-56 checks covering port selection, groups and permissions, delegated work and approval, identity,
+76 checks covering port selection, groups and permissions, delegated work and approval, identity,
 messaging, long-polling, ask/reply, channels, error handling, and persistence across a restart.
-Expected output ends with `56 passed, 0 failed`.
+Expected output ends with `76 passed, 0 failed`.
 
 > **The browser-peer layer has no automated coverage** — it needs Electron, a real claude.ai
 > login, and live streaming. Walk through the manual list in [TESTING.md](TESTING.md) after

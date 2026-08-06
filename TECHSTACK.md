@@ -397,7 +397,7 @@ producing `clankercom--win-x64.zip`.
 
 ## 8. Testing (`scripts/check.js`)
 
-56 checks, no test framework.
+76 checks, no test framework.
 
 **The tests drive the real hub through real MCP clients over real HTTP** — two of them, so
 multi-agent behaviour is genuinely exercised rather than mocked. They cover port selection,
@@ -439,7 +439,7 @@ clankercom/
 │     ├─ turns.js              # per-peer serial turn queue
 │     └─ peer-manager.js       # peers as hub agents; routing both directions
 ├─ scripts/
-│  ├─ check.js                 # end-to-end hub test (56 checks)
+│  ├─ check.js                 # end-to-end hub test (76 checks)
 │  └─ package-zip.js           # release archive
 └─ README.md / RUNNING.md / HANDOFF.md / TECHSTACK.md / TESTING.md / TROUBLESHOOTING.md
 ```

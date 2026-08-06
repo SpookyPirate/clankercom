@@ -41,6 +41,28 @@ const { handlers } = require('./handlers');
 const AGENT_HEADER = 'x-clanker-agent';
 const PLATFORM_HEADER = 'x-clanker-platform';
 
+/**
+ * Read a header value that may carry a name we cannot send as-is.
+ *
+ * HTTP header values are ByteString — latin-1 only — so a client cannot put a
+ * name like "Research — Vector Stores" in a header at all; the request throws
+ * before it leaves. That is a real trap, because names with dashes and accents
+ * are exactly what the naming convention asks agents to choose.
+ *
+ * Percent-encoded values are therefore decoded here, so a client can send
+ * `Research%20%E2%80%94%20Vector%20Stores` and arrive with the name intact.
+ * A value that is not percent-encoded passes through untouched.
+ */
+function decodeHeader(value) {
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    // Malformed escapes mean it was never percent-encoded; take it literally.
+    return value;
+  }
+}
+
 function createHubServer({ hub, peers }) {
   const app = express();
   app.use(express.json({ limit: '20mb' }));
@@ -110,8 +132,8 @@ function createHubServer({ hub, peers }) {
       id: null, // assigned by the transport on initialize
       agentId: null,
       clientInfo: null,
-      requestedHandle: headers[AGENT_HEADER] || null,
-      requestedPlatform: headers[PLATFORM_HEADER] || null,
+      requestedHandle: decodeHeader(headers[AGENT_HEADER]),
+      requestedPlatform: decodeHeader(headers[PLATFORM_HEADER]),
     };
 
     const transport = new StreamableHTTPServerTransport({

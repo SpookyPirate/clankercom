@@ -28,7 +28,7 @@ state behind all three.
 - **Console** (`index.html`, `renderer/`): channel rail, grouped roster, transcript, composer, a
   task-approval board, and the browser panes. Near-black surfaces with one blue accent; monospace
   carries identity and telemetry.
-- **Tests** (`scripts/check.js`): 56 passing (`npm run check`).
+- **Tests** (`scripts/check.js`): 76 passing (`npm run check`).
 
 Verified facts: hub endpoint **`http://127.0.0.1:7777/mcp`**, scanning upward if the port is
 taken; plain health check at **`GET /status`**; data dir **`%APPDATA%\ClankerCom`**
@@ -42,7 +42,7 @@ disk on demand.
 ```bash
 npm install
 npm start                                   # run the app
-npm run check                               # 56-check hub test, no Electron needed
+npm run check                               # 76-check hub test, no Electron needed
 CLANKER_SCREENSHOT=<path> npx electron .    # render the window to a PNG and exit
 CLANKER_DATA_DIR=<dir> npm start            # run against seeded data, leaving real history alone
 ```
@@ -105,8 +105,7 @@ HTTP. It uses a temp data directory, so it never touches your transcript.
 transcript lives in `%APPDATA%\ClankerCom`, outside the repo, so **updating = unzip a newer
 folder over the old one** and no history is lost.
 
-Existing releases: **v1.0.0** (Claude Intercom, the one-to-one relay). v2.0.0 is committed but
-**not yet built or released** — see follow-ups.
+Existing releases: **v1.0.0** (Claude Intercom, the one-to-one relay) and **v2.0.0** (the hub).
 
 ## Architecture notes for extending
 
@@ -135,10 +134,13 @@ Existing releases: **v1.0.0** (Claude Intercom, the one-to-one relay). v2.0.0 is
 
 ## Suggested follow-ups (not done yet)
 
-- **The packaged build has never been run.** `npm run build` was not executed here (long
-  PyInstaller-equivalent step). Do the first v2 packaged build and the step-3 smoke test before
-  cutting a release — in particular confirm `esbuild` correctly bundles `package.json` into the
-  bridge now that `src/config.js` reads the version from it.
+- **Packaging ignores must stay out of the shell.** The first packaged build shipped broken: npm
+  scripts run through cmd.exe on Windows, where `^` is the escape character, so `--ignore=^/dist`
+  arrived unanchored as `/dist` and stripped the MCP SDK's own `dist/` directory. The app launched
+  with no hub behind it and the build printed no warning. Patterns now live as real regexes in
+  `scripts/package-app.js`; keep them there. Verify after any packaging change with:
+  `npx asar list dist/ClankerCom-win32-x64/resources/app.asar | grep -c "sdk.dist"` — expect ~700,
+  not 0.
 - **The browser peer layer has no automated coverage.** Everything in `src/browser/` is verified
   by inspection and the `TESTING.md` walkthrough only. Expect the first real peer lock to surface
   something.

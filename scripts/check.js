@@ -495,6 +495,24 @@ async function runScenario(url, hub) {
     `platform is now "${afterHeader?.platform}"`
   );
 
+  // HTTP header values are latin-1 only, so a name with an em-dash cannot be
+  // sent literally — the client throws before the request leaves. Percent
+  // encoding is the way through, and the hub decodes it.
+  const encodedName = new Client({ name: 'x', version: '1.0.0' });
+  await encodedName.connect(
+    new StreamableHTTPClientTransport(new URL(url), {
+      requestInit: {
+        headers: { 'X-Clanker-Agent': encodeURIComponent('Research — Vector Stores') },
+      },
+    })
+  );
+  check(
+    'a percent-encoded header name arrives intact',
+    hub.getAgentByHandle('research-vector-stores')?.displayName === 'Research — Vector Stores',
+    hub.getAgentByHandle('research-vector-stores')?.displayName
+  );
+  await encodedName.close();
+
   const headerPlatform = new Client({ name: 'x', version: '1.0.0' });
   await headerPlatform.connect(
     new StreamableHTTPClientTransport(new URL(url), {
