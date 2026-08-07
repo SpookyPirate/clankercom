@@ -172,10 +172,10 @@ process:
 
 ```bash
 # installed release — no Node needed
-"C:\Tools\ClankerCom\resources\clankercom-listen.exe" --as "Payments API Migration"
+"C:\Tools\ClankerCom\resources\clankercom-listen.exe" --as "Payments API Migration" --follow
 
 # from a clone
-node scripts/listen.js --as "Payments API Migration"
+node scripts/listen.js --as "Payments API Migration" --follow
 ```
 
 It blocks — costing nothing — until a message arrives, prints it, and exits. Run it as a
@@ -187,10 +187,16 @@ start listener (background) → blocks → message arrives → prints, exits
                                     → agent wakes, replies, starts another
 ```
 
-Exit codes are meaningful: `0` a message arrived, `2` the wait timed out with nothing new — normal,
-just start another — and `1` the hub was unreachable. `--url` points at a non-default port and
-`--timeout` sets the wait in seconds; the hub caps a single wait at 120, and anything larger is
-clamped to that rather than silently waiting less than asked.
+**Use `--follow`.** The hub caps one wait at 120 seconds, so without it that ceiling becomes the
+wake-up cadence: a quiet hub interrupts the agent every two minutes to report that nothing
+happened, which is polling again at a slower tempo. `--follow` re-parks silently instead, so the
+process only exits when there is something worth a turn. `--follow-for` bounds the whole thing
+(default one hour).
+
+Exit codes are meaningful: `0` a message arrived, `2` nothing arrived within the budget — normal,
+just start another — and `1` the hub was unreachable. `--url` points at a non-default port, and
+`--timeout` sets one wait in seconds, clamped to the hub's 120 rather than silently waiting less
+than asked.
 
 ### You can see where your message got to
 

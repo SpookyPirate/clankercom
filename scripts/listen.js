@@ -24,10 +24,17 @@
  * Usage:
  *   node scripts/listen.js [--url http://127.0.0.1:7777/mcp]
  *                          [--as "My Agent Name"]
- *                          [--timeout 120]
+ *                          [--timeout 120]      one wait, in seconds (hub caps at 120)
+ *                          [--follow]           keep waiting until something arrives
+ *                          [--follow-for 3600]  total budget for --follow
  *
- * Exit codes: 0 a message arrived · 2 timed out, nothing new · 1 could not
- * reach the hub. A timeout is not a failure — start another listener.
+ * Prefer `--follow`. Without it the hub's 120s ceiling becomes the wake-up
+ * cadence, so a quiet hub interrupts the agent every two minutes to report that
+ * nothing happened — which is polling again, just slower. With it, the process
+ * stays parked and exits only when there is something worth a turn.
+ *
+ * Exit codes: 0 a message arrived · 2 nothing arrived within the budget · 1
+ * could not reach the hub. A timeout is not a failure — start another listener.
  */
 
 // Static requires, by package name — a computed path cannot be bundled, and
@@ -51,6 +58,14 @@ const AGENT_NAME = arg('as', process.env.CLANKER_AGENT || null);
 const HUB_MAX_WAIT = 120;
 const requested = Number(arg('timeout', '120'));
 const WAIT_SECONDS = Math.max(1, Math.min(HUB_MAX_WAIT, Number.isFinite(requested) ? requested : 120));
+
+// Without this, a quiet hub wakes the agent every two minutes to be told
+// nothing happened — the exact polling the long-poll exists to avoid, just at a
+// slower cadence. In follow mode a quiet wait simply starts another, so the
+// process exits only when there is something worth a turn.
+const FOLLOW = process.argv.includes('--follow') || process.argv.includes('-f');
+const followFor = Number(arg('follow-for', '3600'));
+const FOLLOW_SECONDS = Math.max(WAIT_SECONDS, Number.isFinite(followFor) ? followFor : 3600);
 
 const textOf = (result) => (result.content || []).map((part) => part.text || '').join('\n');
 
@@ -78,43 +93,57 @@ const isTimeout = (error) => error?.code === -32001 || /timed out/i.test(error?.
     process.exit(1);
   }
 
-  let body;
-  try {
-    const result = await client.callTool(
-      { name: 'wait_for_messages', arguments: { timeout_seconds: WAIT_SECONDS } },
-      undefined,
-      // Deliberately blocking, so the client must be told to allow it. The SDK
-      // times a request out after 60s by default and aborts — which killed any
-      // wait longer than a minute with "Request timed out", exit 1, looking
-      // like a dead hub rather than a listener doing its job. The margin
-      // covers the round trip so the hub's own timeout always fires first.
-      { timeout: WAIT_SECONDS * 1000 + 15000 }
-    );
-    body = textOf(result);
-  } catch (error) {
-    await client.close().catch(() => {});
-    // A wait that ran out is the ordinary case, not a failure — same exit code
-    // as the hub's own "nothing arrived", so callers treat them alike.
-    if (isTimeout(error)) {
-      console.log(`Nothing arrived in ${WAIT_SECONDS}s. Normal — start another listener.`);
+  const deadline = Date.now() + FOLLOW_SECONDS * 1000;
+  let quietRounds = 0;
+
+  // Each pass parks for one hub-length wait. In --follow mode a quiet pass just
+  // starts another, so the process only exits when there is something to say.
+  for (;;) {
+    let body;
+    try {
+      const result = await client.callTool(
+        { name: 'wait_for_messages', arguments: { timeout_seconds: WAIT_SECONDS } },
+        undefined,
+        // Deliberately blocking, so the client must be told to allow it. The
+        // SDK times a request out after 60s by default and aborts — which
+        // killed any wait longer than a minute with "Request timed out", exit
+        // 1, looking like a dead hub rather than a listener doing its job. The
+        // margin covers the round trip so the hub's own timeout fires first.
+        { timeout: WAIT_SECONDS * 1000 + 15000 }
+      );
+      body = textOf(result);
+    } catch (error) {
+      if (!isTimeout(error)) {
+        await client.close().catch(() => {});
+        throw error;
+      }
+      body = 'No new messages';
+    }
+
+    const quiet = /^No new messages/.test(body);
+
+    if (!quiet) {
+      await client.close().catch(() => {});
+      console.log(body);
+      console.log(
+        '\n--- Respond with send_message, then start another listener to stay reachable. ---'
+      );
+      process.exit(0);
+    }
+
+    quietRounds++;
+    if (!FOLLOW || Date.now() >= deadline) {
+      await client.close().catch(() => {});
+      const spent = quietRounds * WAIT_SECONDS;
+      console.log(
+        FOLLOW
+          ? `Nothing arrived in ${spent}s. Normal — start another listener to keep waiting.`
+          : `Nothing arrived in ${WAIT_SECONDS}s. Normal — start another listener to keep waiting.`
+      );
       process.exit(2);
     }
-    throw error;
+    // Quiet, and there is budget left: park again without waking anyone.
   }
-  await client.close();
-
-  if (/^No new messages/.test(body)) {
-    console.log(
-      `Nothing arrived in ${WAIT_SECONDS}s. Normal — start another listener to keep waiting.`
-    );
-    process.exit(2);
-  }
-
-  console.log(body);
-  console.log(
-    '\n--- Respond with send_message, then start another listener to stay reachable. ---'
-  );
-  process.exit(0);
 })().catch((error) => {
   console.error(`Listener failed: ${error.message}`);
   process.exit(1);

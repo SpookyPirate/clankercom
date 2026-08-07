@@ -103,7 +103,7 @@ script is visible rather than silent.
 Attach a real listening agent to a scratch hub, to exercise delivery end to end:
 
 ```bash
-node scripts/listen.js --url http://127.0.0.1:7801/mcp --as "Scratch Agent" --timeout 30
+node scripts/listen.js --url http://127.0.0.1:7801/mcp --as "Scratch Agent" --follow
 ```
 
 > Seed scratch data from a clean directory each run. Copying a directory a previous run wrote into
