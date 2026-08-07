@@ -23,6 +23,8 @@ const SUBSCRIBABLE_EVENTS = [
   'hub:files',
   'hub:cleared',
   'hub:reveal',
+  'hub:listeners',
+  'hub:seen',
 ];
 
 contextBridge.exposeInMainWorld('clanker', {

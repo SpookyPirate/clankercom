@@ -400,6 +400,7 @@ class Hub extends EventEmitter {
       this.waiters.delete(waiter);
       waiter.resolve([]);
     }
+    this._announceListeners();
 
     this._persist();
     this.emit('agent:removed', { id: agentId, handle: agent.handle });
@@ -697,7 +698,13 @@ class Hub extends EventEmitter {
     if (author) author.cursor = Math.max(author.cursor || 0, message.seq);
 
     this.emit('message', message);
-    this._wakeWaiters(message);
+
+    // Waking a waiter removes it from the pool, so the moment this returns the
+    // listener count is back to zero. Anything asking "was anyone listening?"
+    // afterwards gets "no" even when the message was delivered instantly —
+    // which is precisely backwards. The answer only exists here, so it rides
+    // back with the message rather than being reconstructed from events.
+    message.deliveredTo = this._wakeWaiters(message);
     return message;
   }
 
@@ -911,6 +918,7 @@ class Hub extends EventEmitter {
     const backlog = this.messages.filter((m) => this._isForAgent(m, agent, scope, cursor));
     if (backlog.length) {
       agent.cursor = Math.max(agent.cursor || 0, backlog[backlog.length - 1].seq);
+      this.markSeen(backlog, agent);
       return Promise.resolve(backlog);
     }
 
@@ -923,10 +931,60 @@ class Hub extends EventEmitter {
       const waiter = { agent, scope, cursor, resolve, timer: null, match: null };
       waiter.timer = setTimeout(() => {
         this.waiters.delete(waiter);
+        this._announceListeners();
         resolve([]);
       }, waitMs);
       this.waiters.add(waiter);
+      this._announceListeners();
     });
+  }
+
+  /**
+   * Who is currently parked in wait_for_messages.
+   *
+   * This is the answer to the question the console could not previously
+   * answer: is anyone actually listening? A message sent to a hub where every
+   * agent is idle looks identical to one sent to a hub full of attentive
+   * agents, and the human is left wondering whether the app is broken.
+   */
+  listeners() {
+    const handles = new Set();
+    for (const waiter of this.waiters) handles.add(waiter.agent.handle);
+    return Array.from(handles);
+  }
+
+  _announceListeners() {
+    this.emit('listeners:changed', this.listeners());
+  }
+
+  /**
+   * Record that an agent actually received a message.
+   *
+   * Held in memory rather than written to the log: it is a live indicator of
+   * what is happening right now, not part of the record. A restart forgetting
+   * who had read what is the correct behaviour, not a loss.
+   */
+  markSeen(messages, agent) {
+    if (!agent || agent.kind === 'human') return;
+
+    const touched = [];
+    for (const message of messages) {
+      if (message.authorId === agent.id) continue;
+      if (!message.seenBy) message.seenBy = new Set();
+      if (message.seenBy.has(agent.handle)) continue;
+
+      message.seenBy.add(agent.handle);
+      touched.push(message);
+    }
+
+    for (const message of touched) {
+      this.emit('message:seen', {
+        id: message.id,
+        seq: message.seq,
+        channelName: message.channelName,
+        seenBy: Array.from(message.seenBy),
+      });
+    }
   }
 
   /**
@@ -965,14 +1023,20 @@ class Hub extends EventEmitter {
     return agent.channels.has(message.channelId);
   }
 
+  /** Hand the message to everyone parked on it. Returns the handles woken. */
   _wakeWaiters(message) {
+    const delivered = new Set();
     for (const waiter of Array.from(this.waiters)) {
       if (!this._isForAgent(message, waiter.agent, waiter.scope, waiter.cursor)) continue;
       clearTimeout(waiter.timer);
       this.waiters.delete(waiter);
       waiter.agent.cursor = Math.max(waiter.agent.cursor || 0, message.seq);
+      this.markSeen([message], waiter.agent);
       waiter.resolve([message]);
+      delivered.add(waiter.agent.handle);
     }
+    this._announceListeners();
+    return Array.from(delivered);
   }
 
   /** Release every pending long-poll. Called on shutdown. */

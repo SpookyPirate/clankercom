@@ -123,6 +123,8 @@ function forwardHubEvents() {
   hub.on('settings:changed', (settings) => send('hub:settings', settings));
   hub.on('files:changed', (scope) => send('hub:files', scope));
   hub.on('channel:cleared', (channel) => send('hub:cleared', channel));
+  hub.on('listeners:changed', (handles) => send('hub:listeners', handles));
+  hub.on('message:seen', (receipt) => send('hub:seen', receipt));
   peers.on('peers:changed', (list) => send('hub:peers', list));
 
   hub.on('message', (message) => notifyIfForHuman(message));
@@ -339,33 +341,43 @@ function announceBackgroundOnce() {
  * can be captured and verified without a human at the keyboard.
  */
 function captureAndExit(outputPath) {
-  mainWindow.webContents.once('did-finish-load', () => {
+  mainWindow.webContents.once('did-finish-load', async () => {
     // The window must be visible and painted before capturePage returns
     // pixels; capturing an unshown window yields an empty image.
     mainWindow.show();
     mainWindow.focus();
 
+    // The capture waits for the script to resolve. An eval that drives a slow
+    // state — waiting on a real agent to connect, say — would otherwise be
+    // photographed mid-flight, and the screenshot would show the state before
+    // the one being tested while still looking like a pass.
     const script = process.env.CLANKER_SCREENSHOT_EVAL;
     if (script) {
-      mainWindow.webContents
-        .executeJavaScript(script)
-        .then((result) => {
-          if (result !== undefined) console.log(`[${APP_NAME}] eval ->`, result);
-        })
-        .catch((error) => console.error(`[${APP_NAME}] eval failed:`, error.message));
+      const budget = Number(process.env.CLANKER_SCREENSHOT_TIMEOUT || 30000);
+      try {
+        const result = await Promise.race([
+          mainWindow.webContents.executeJavaScript(script),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`eval exceeded ${budget}ms`)), budget)
+          ),
+        ]);
+        if (result !== undefined) console.log(`[${APP_NAME}] eval ->`, result);
+      } catch (error) {
+        console.error(`[${APP_NAME}] eval failed:`, error.message);
+      }
     }
 
-    setTimeout(async () => {
-      try {
-        const image = await mainWindow.webContents.capturePage();
-        const size = image.getSize();
-        require('fs').writeFileSync(outputPath, image.toPNG());
-        console.log(`[${APP_NAME}] screenshot ${size.width}x${size.height} -> ${outputPath}`);
-      } catch (error) {
-        console.error(`[${APP_NAME}] screenshot failed:`, error.message);
-      }
-      app.exit(0);
-    }, 3500);
+    // A short settle for animations that started as the script finished.
+    await new Promise((resolve) => setTimeout(resolve, script ? 900 : 3500));
+    try {
+      const image = await mainWindow.webContents.capturePage();
+      const size = image.getSize();
+      require('fs').writeFileSync(outputPath, image.toPNG());
+      console.log(`[${APP_NAME}] screenshot ${size.width}x${size.height} -> ${outputPath}`);
+    } catch (error) {
+      console.error(`[${APP_NAME}] screenshot failed:`, error.message);
+    }
+    app.exit(0);
   });
 }
 
@@ -381,6 +393,7 @@ ipcMain.handle('hub:bootstrap', async () => ({
   tasks: hub.taskBoard.list().map((task) => hub.taskBoard.publicTask(task)),
   settings: hub.settings,
   peers: peers.list(),
+  listeners: hub.listeners(),
   port: hubServer.getPort(),
   defaultChannel: DEFAULT_CHANNEL,
 }));
@@ -393,7 +406,15 @@ ipcMain.handle('hub:send', async (_event, { channel, text }) => {
   const target = hub.getChannel(channel);
   if (!target) throw new Error(`unknown channel: ${channel}`);
   hub.joinChannel(humanAgent.id, target.id);
-  return hub.postMessage({ channelId: target.id, authorId: humanAgent.id, text });
+
+  // `seenBy` is an internal Set the hub mutates in place; the renderer wants
+  // the delivery outcome, not a live handle onto hub state.
+  const { seenBy, ...wire } = hub.postMessage({
+    channelId: target.id,
+    authorId: humanAgent.id,
+    text,
+  });
+  return wire;
 });
 
 ipcMain.handle('hub:createChannel', async (_event, { name, topic }) => {

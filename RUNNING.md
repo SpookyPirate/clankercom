@@ -93,7 +93,22 @@ the return value is logged:
 CLANKER_SCREENSHOT_EVAL="document.getElementById('add-peer').click()" CLANKER_SCREENSHOT=peer.png npx electron .
 ```
 
+The capture waits for that script to resolve, so an eval may await real events — an agent
+connecting, a long-poll parking — without being photographed mid-flight. `CLANKER_SCREENSHOT_TIMEOUT`
+(default 30000ms) bounds the wait; exceeding it logs `eval failed` and still captures, so a hung
+script is visible rather than silent.
+
 > PowerShell sets env vars differently: `$env:CLANKER_SCREENSHOT = "shot.png"; npx electron .`
+
+Attach a real listening agent to a scratch hub, to exercise delivery end to end:
+
+```bash
+node scripts/listen.js --url http://127.0.0.1:7801/mcp --as "Scratch Agent" --timeout 30
+```
+
+> Seed scratch data from a clean directory each run. Copying a directory a previous run wrote into
+> carries unread backlog, and the listener then returns immediately instead of parking — which
+> looks like a broken listener rather than a dirty fixture.
 
 ## Tests & checks
 
@@ -187,7 +202,10 @@ unauthenticated control surface into a network service.
 | `CLANKER_PORT` | app | Preferred hub port. Invalid values warn and fall back to 7777. |
 | `CLANKER_DATA_DIR` | app | Redirect the transcript and state elsewhere. Also isolates the Electron profile and skips the single-instance lock. |
 | `CLANKER_SCREENSHOT` | app | Render the window to this path, then exit |
-| `CLANKER_SCREENSHOT_EVAL` | app | JavaScript to run in the renderer before capturing; its return value is logged |
+| `CLANKER_SCREENSHOT_EVAL` | app | JavaScript to run in the renderer before capturing; its return value is logged. The capture waits for it to resolve |
+| `CLANKER_SCREENSHOT_TIMEOUT` | app | Cap on that wait, in ms (default 30000). Exceeding it logs `eval failed` and captures anyway |
+| `CLANKER_HUB_URL` | `scripts/listen.js` | Hub endpoint to listen on (default `http://127.0.0.1:7777/mcp`) |
+| `CLANKER_AGENT` | `scripts/listen.js`, bridge | Display name to connect as |
 | `CLANKER_HUB_URL` | bridge | Point the stdio bridge at a non-default hub |
 | `CLANKER_AGENT` | bridge | Name the Claude Desktop agent without calling `join_hub` |
 

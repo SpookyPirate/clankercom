@@ -32,6 +32,8 @@ const state = {
   collapsed: new Set(),// folded rail sections
   fileScope: 'channel',// which folder the files view is showing
   searchQuery: '',     // guards against a stale response overwriting newer results
+  listeners: [],       // agents currently parked in wait_for_messages
+  pendingDelivery: null,// the message whose fate the console is reporting
   peerViews: new Map(),// peerId -> webview element
   activePeerId: null,
 };
@@ -650,6 +652,8 @@ async function selectChannel(channelName) {
     state.searchQuery = '';
   }
 
+  if (state.pendingDelivery?.channelName !== channelName) state.pendingDelivery = null;
+
   state.activeChannel = channelName;
   setView('channel');
   state.unread.set(channelName, 0);
@@ -681,7 +685,11 @@ function renderNetStrip() {
   if (!transmitting.length) {
     el.netStrip.classList.remove('is-live');
     const online = Array.from(state.agents.values()).filter((a) => a.status === 'online').length;
-    el.netStatus.textContent = `net idle · ${online} online`;
+    const listening = state.listeners.length;
+
+    el.netStatus.textContent = listening
+      ? `${listening} listening · ${online} online`
+      : `net idle · ${online} online · nobody listening`;
     return;
   }
 
@@ -703,7 +711,7 @@ async function sendCurrentMessage() {
   resizeComposer();
 
   try {
-    await window.clanker.send(state.activeChannel, text);
+    trackDelivery(await window.clanker.send(state.activeChannel, text));
   } catch (error) {
     el.composer.value = text;
     toast(`Could not send: ${error.message}`);
@@ -915,6 +923,83 @@ el.winMaximize.onclick = async () => renderWindowState(await window.clanker.togg
 // Snapping and double-click-to-maximize happen in the OS, so the button state
 // has to follow the window rather than only its own clicks.
 window.clanker.on('window:state', ({ maximized }) => renderWindowState(maximized));
+
+// ============================================
+// Delivery status
+// ============================================
+
+/**
+ * Tell the human what happened to the message they just sent.
+ *
+ * Sending into a hub where every agent is idle looked identical to sending
+ * into an attentive one — the message simply sat there, and silence reads as a
+ * frozen application rather than as nobody listening. This says which it is,
+ * and when nobody is listening it says what to do about it.
+ *
+ * Every state below is a fact the hub actually knows. Nothing is inferred:
+ * "read" means an agent was genuinely handed the message, and "replying" comes
+ * from a browser peer's real relay phase.
+ */
+function renderDelivery() {
+  document.querySelector('.delivery')?.remove();
+
+  const pending = state.pendingDelivery;
+  if (!pending || state.view !== 'channel' || pending.channelName !== state.activeChannel) return;
+
+  const row = document.createElement('div');
+  const replying = state.peers.find(
+    (peer) => peer.state === 'typing' || peer.state === 'streaming'
+  );
+
+  const online = Array.from(state.agents.values()).filter(
+    (agent) => agent.status === 'online' && agent.kind !== 'human'
+  ).length;
+
+  let tone = '';
+  let text;
+  let hint = '';
+
+  if (pending.seenBy.length) {
+    tone = 'is-seen';
+    text = `Read by ${pending.seenBy.map((handle) => '@' + handle).join(', ')}`;
+    if (replying) text += ` · @${replying.handle} is replying…`;
+  } else if (replying) {
+    text = `@${replying.handle} is replying…`;
+  } else if (online) {
+    // Connected but not parked in wait_for_messages. The message is safely
+    // stored and the agent will see it — but only once its own runtime gives
+    // it a turn, which nothing here can force.
+    tone = 'is-waiting';
+    text = `Queued · ${online} agent${online === 1 ? '' : 's'} connected, none listening yet`;
+    hint = 'Tell your agent to check ClankerCom, or have it run a listener to stay reachable.';
+  } else {
+    tone = 'is-unheard';
+    text = 'Sent — but no agents are connected';
+    hint = 'Connect one with the command in an empty channel. See the README.';
+  }
+
+  row.className = `delivery ${tone}`.trim();
+  row.innerHTML = `
+    <span class="delivery-pulse" aria-hidden="true"></span>
+    <span>${escapeHtml(text)}</span>
+    ${hint ? `<span class="delivery-hint">${escapeHtml(hint)}</span>` : ''}
+  `;
+  el.transcript.appendChild(row);
+}
+
+/** Watch the message just sent, until somebody reads it or the topic moves on. */
+function trackDelivery(message) {
+  state.pendingDelivery = {
+    id: message.id,
+    seq: message.seq,
+    channelName: message.channelName,
+    // An agent parked in wait_for_messages is handed the message during the
+    // send itself, so its receipt is emitted before this row exists. The hub
+    // reports that delivery in the reply instead of us missing the event.
+    seenBy: message.deliveredTo || [],
+  };
+  renderDelivery();
+}
 
 // ============================================
 // Search
@@ -1636,7 +1721,15 @@ window.clanker.on('hub:message', (message) => {
       el.transcript.innerHTML = '';
       state.lastRendered = null;
     }
+
+    // Somebody answered, which is a better answer than any status line.
+    if (state.pendingDelivery && message.authorHandle !== state.self?.handle) {
+      state.pendingDelivery = null;
+    }
+
+    document.querySelector('.delivery')?.remove();
     appendMessage(message);
+    renderDelivery();
     return;
   }
 
@@ -1706,6 +1799,18 @@ window.clanker.on('hub:files', () => {
   if (state.view === 'files') renderFileList();
 });
 
+window.clanker.on('hub:listeners', (handles) => {
+  state.listeners = handles;
+  renderNetStrip();
+  renderDelivery();
+});
+
+window.clanker.on('hub:seen', ({ id, seenBy }) => {
+  if (state.pendingDelivery?.id !== id) return;
+  state.pendingDelivery.seenBy = seenBy;
+  renderDelivery();
+});
+
 window.clanker.on('hub:reveal', ({ channel, view }) => {
   if (view === 'tasks') return setView('tasks');
   if (channel && state.channels.has(channel)) selectChannel(channel);
@@ -1734,6 +1839,7 @@ async function start() {
   state.groups = snapshot.groups || [];
   state.tasks = snapshot.tasks || [];
   state.settings = snapshot.settings || state.settings;
+  state.listeners = snapshot.listeners || [];
 
   el.autoApprove.checked = !!state.settings.autoApproveTasks;
   renderWindowState(await window.clanker.isMaximized());

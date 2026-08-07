@@ -376,13 +376,14 @@ const handlers = {
 
   read_messages(args, context) {
     const { hub } = context;
-    ensureIdentity(context);
+    const agent = ensureIdentity(context);
     const channel = requireChannel(hub, args.channel);
 
     const messages = hub.readMessages(channel.id, {
       limit: args.limit,
       sinceSeq: args.since_seq ?? null,
     });
+    hub.markSeen(messages, agent);
     return asText(formatTranscript(messages, { header: `#${channel.name}` }));
   },
 

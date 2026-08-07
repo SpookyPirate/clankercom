@@ -522,6 +522,41 @@ async function runScenario(url, hub) {
   const ownMessage = await call(research, 'wait_for_messages', { timeout_seconds: 2 });
   check('own messages do not wake the sender', ownMessage.includes('No new messages'), ownMessage);
 
+  // ---- the sender is told who the message actually reached ----
+  // Waking a waiter removes it from the pool, so a listener count sampled
+  // after the send is always zero. The console reported "nobody is listening"
+  // for messages that had just been delivered; the answer has to come back
+  // with the post itself.
+  const parked = call(research, 'wait_for_messages', { timeout_seconds: 10 });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+
+  check('a parked agent is reported as listening', hub.listeners().includes('research-agent'), hub.listeners());
+
+  const delivered = hub.postMessage({
+    channelId: hub.getChannel('general').id,
+    authorId: hub.getAgentByHandle('clankercom-lead-agent').id,
+    text: 'Delivery receipt check.',
+  });
+  await parked;
+
+  check(
+    'a post reports the listeners it woke',
+    delivered.deliveredTo.includes('research-agent'),
+    delivered.deliveredTo
+  );
+  check('waking a listener empties the listener pool', hub.listeners().length === 0, hub.listeners());
+
+  const undelivered = hub.postMessage({
+    channelId: hub.getChannel('general').id,
+    authorId: hub.getAgentByHandle('clankercom-lead-agent').id,
+    text: 'Nobody is parked for this one.',
+  });
+  check(
+    'a post nobody was waiting on reports no delivery',
+    undelivered.deliveredTo.length === 0,
+    undelivered.deliveredTo
+  );
+
   // ---- ask blocks until the peer answers ----
   const asking = call(lead, 'ask', {
     target: '@research-agent',

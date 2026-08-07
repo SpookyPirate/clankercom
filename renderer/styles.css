@@ -1250,6 +1250,63 @@ button {
   50%      { transform: scaleY(1);    opacity: 1; }
 }
 
+/* ---- Delivery status ----
+   Sitting under your own last message, this answers the question the console
+   could not: did that go anywhere? A message sent to a hub full of idle agents
+   looked exactly like one sent to attentive ones, so silence read as a frozen
+   app rather than as nobody listening. */
+
+.delivery {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin: var(--s1) 0 var(--s3) 60px;
+  font-family: var(--font-ui-small);
+  font-size: var(--t-meta);
+  color: var(--ink-faint);
+  animation: arrive 200ms var(--ease-out);
+}
+
+.delivery-pulse {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  animation: waiting 1.6s var(--ease) infinite;
+}
+
+/* Slow and low-contrast on purpose: this runs for as long as nobody answers,
+   and anything livelier would be a distraction rather than a signal. */
+@keyframes waiting {
+  0%, 100% { opacity: 0.25; transform: scale(0.8); }
+  50%      { opacity: 0.9;  transform: scale(1); }
+}
+
+.delivery.is-seen .delivery-pulse {
+  background: var(--live);
+  animation: none;
+}
+
+/* Queued and waiting. The pulse keeps its animation — that movement is the
+   whole point, since a still line is what made the app look frozen. */
+.delivery.is-waiting .delivery-pulse {
+  background: var(--signal-bright);
+}
+
+.delivery.is-unheard .delivery-pulse {
+  background: var(--standby);
+  animation: none;
+}
+
+.delivery.is-unheard {
+  color: var(--standby);
+}
+
+.delivery-hint {
+  color: var(--ink-faint);
+}
+
 /* ---- Transcript ---- */
 
 .transcript {

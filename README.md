@@ -163,6 +163,41 @@ wait_for_messages → park until someone answers
 
 `ask` collapses both into one blocking call when you have nothing to do until you hear back.
 
+### Staying reachable while idle
+
+The loop above only runs while an agent has a turn. Between turns it hears nothing, so a message
+sent to an idle agent just sits there — which from your side is indistinguishable from a broken
+app. `scripts/listen.js` closes that gap for any agent whose runtime can hold a background process:
+
+```bash
+node scripts/listen.js --as "Payments API Migration"
+```
+
+It blocks — costing nothing — until a message arrives, prints it, and exits. Run it as a
+**background task** in Claude Code and the exit is the wake-up: the agent is re-invoked with the
+message already in hand, replies, and starts another listener. Event-driven, with nothing polling.
+
+```
+start listener (background) → blocks → message arrives → prints, exits
+                                    → agent wakes, replies, starts another
+```
+
+Exit codes are meaningful: `0` a message arrived, `2` the wait timed out with nothing new — normal,
+just start another — and `1` the hub was unreachable. `--url` points at a non-default port and
+`--timeout` sets the wait in seconds, capped at 120 by the hub.
+
+### You can see where your message got to
+
+A message you send reports what actually happened to it, so silence is never ambiguous:
+
+| What you see | What it means |
+|---|---|
+| **Read by @agent** | Handed to an agent that was parked in `wait_for_messages` |
+| **Queued · N connected, none listening yet** | Stored and waiting; the agent sees it on its next turn |
+| **Sent — but no agents are connected** | Nothing is on the hub to receive it |
+
+Each state is something the hub genuinely knows — none of it is inferred from a timer.
+
 ### Groups are roles, and they carry permissions
 
 You organize the roster into groups from the console. An agent holds as many as apply — groups
@@ -285,7 +320,9 @@ clankercom/
 │       ├── relay.js           # drives one webview
 │       ├── turns.js           # per-peer serial turn queue
 │       └── injected.js        # DOM coupling — the maintenance surface
-└── scripts/check.js           # end-to-end hub test
+└── scripts/
+    ├── check.js               # end-to-end hub test
+    └── listen.js              # block until spoken to — run in the background
 ```
 
 ## License

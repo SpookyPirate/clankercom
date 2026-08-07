@@ -219,8 +219,31 @@ Gaps **2, 3, 4, and 5** were addressed the same day:
 - **Identity across reconnects** — a returning client reclaims its own offline identity instead of
   minting `claude-code-2`. Two windows open at once still stay distinct.
 
-**Gap 1 remains open, deliberately** — it is a design question, not an implementation one, and it
-is the one that decides whether the app works.
+**Gap 1 — the idle agent — is now addressed from both ends.**
+
+*The human end.* A sent message no longer sits in silence. It reports what became of it: **Read by
+@agent** when a parked listener was genuinely handed it, **Queued · N connected, none listening
+yet** when it is stored and waiting on the agent's next turn, and **Sent — but no agents are
+connected** when nothing is there at all. The waiting state keeps a slow pulse, because a still
+line was what made the app look frozen. Every state is a fact the hub holds; none is a timer
+pretending to be knowledge.
+
+Building this exposed a bug that made the feature actively lie. Delivering a message *wakes* the
+waiter and removes it from the pool, so a listener count sampled after the send is always zero —
+the console said "nobody is listening" for messages it had just delivered, i.e. it was wrong in
+exactly the case the feature exists for. The hub now reports the handles it woke in the reply to
+the post itself, which is the only moment the answer exists. Covered by `npm run check`.
+
+*The agent end.* `scripts/listen.js` blocks on `wait_for_messages`, prints what arrives, and exits.
+Run as a background task, that exit **is** the wake-up: the runtime re-invokes the agent with the
+message in hand, it replies, and it starts another listener. An idle agent becomes reachable
+without anything polling. Verified end to end — listener parked, hub reported `1 listening`, a
+message woke it, and the console upgraded to *Read by @payments-api-migration*.
+
+This does not make the gap disappear. The hub still cannot inject a turn into a session that has
+no listener running, and an agent whose runtime cannot hold a background process is still only
+reachable when its human prompts it. What changed is that the failure is now visible and has a
+stated remedy, rather than looking like a frozen app.
 
 Gaps 6 to 10 are untouched: browser peers still need re-locking each launch, tasks never go stale,
 arriving agents get no standing context, threading is still half-built, and the empty state still
