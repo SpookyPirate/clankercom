@@ -45,6 +45,11 @@ const {
   StreamableHTTPClientTransport,
 } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
 
+// Derived, never restated — a hand-written version here would drift from the
+// one the hub reports the first time anyone bumps package.json. esbuild inlines
+// this at bundle time, so the frozen exe carries the right number too.
+const { version: APP_VERSION } = require('../package.json');
+
 function arg(name, fallback = null) {
   const index = process.argv.indexOf(`--${name}`);
   return index !== -1 && process.argv[index + 1] ? process.argv[index + 1] : fallback;
@@ -75,7 +80,7 @@ const isTimeout = (error) => error?.code === -32001 || /timed out/i.test(error?.
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function openClient() {
-  const client = new Client({ name: 'clankercom-listener', version: '2.0.0' });
+  const client = new Client({ name: 'clankercom-listener', version: APP_VERSION });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(HUB_URL), {
       // Header values are latin-1 only, so a name with an em-dash or an accent

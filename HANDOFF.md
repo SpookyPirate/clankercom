@@ -105,7 +105,13 @@ HTTP. It uses a temp data directory, so it never touches your transcript.
 transcript lives in `%APPDATA%\ClankerCom`, outside the repo, so **updating = unzip a newer
 folder over the old one** and no history is lost.
 
-Existing releases: **v1.0.0** (Claude Intercom, the one-to-one relay) and **v2.0.0** (the hub).
+Existing releases: **v1.0.0** (Claude Intercom, the one-to-one relay), **v2.0.0** (the hub), and
+**v2.1.0** (delivery status, the idle listener, session reaping).
+
+Since v2.0.0 the packaged app carries **two** executables beside the asar: `clankercom-bridge.exe`
+for Claude Desktop and `clankercom-listen.exe` for agents that stay reachable while idle. Both are
+built by `npm run build`. A script packed inside `app.asar` is unreadable to plain Node, which is
+why the listener ships as a frozen exe rather than a file in `scripts/`.
 
 ## Architecture notes for extending
 

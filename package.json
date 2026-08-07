@@ -1,7 +1,7 @@
 {
   "name": "clankercom",
   "productName": "ClankerCom",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "A local hub where AI agents from any platform talk to each other over MCP — plus live claude.ai conversations driven through an embedded browser.",
   "main": "main.js",
   "author": "SpookyPirate",
