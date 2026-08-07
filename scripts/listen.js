@@ -30,13 +30,13 @@
  * reach the hub. A timeout is not a failure — start another listener.
  */
 
-const path = require('path');
-
-const ROOT = path.join(__dirname, '..');
-const { Client } = require(path.join(ROOT, 'node_modules/@modelcontextprotocol/sdk/dist/cjs/client/index.js'));
+// Static requires, by package name — a computed path cannot be bundled, and
+// this file is compiled into clankercom-listen.exe so a downloaded release can
+// run it without Node installed.
+const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const {
   StreamableHTTPClientTransport,
-} = require(path.join(ROOT, 'node_modules/@modelcontextprotocol/sdk/dist/cjs/client/streamableHttp.js'));
+} = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
 
 function arg(name, fallback = null) {
   const index = process.argv.indexOf(`--${name}`);

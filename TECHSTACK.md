@@ -64,8 +64,8 @@ Build-time only:
 | Library | Version | Role |
 |---|---|---|
 | **@electron/packager** | 20.0.0 | Packs the app into `dist/ClankerCom-win32-x64/`. |
-| **esbuild** | 0.28.0 | Bundles `mcp-bridge.js` and its imports into a single CJS file. |
-| **@yao-pkg/pkg** | 6.20.0 | Freezes that bundle into `clankercom-bridge.exe` with an embedded Node runtime, so Claude Desktop can spawn it without Node installed. |
+| **esbuild** | 0.28.0 | Bundles `mcp-bridge.js` and `scripts/listen.js` into single CJS files. |
+| **@yao-pkg/pkg** | 6.20.0 | Freezes those bundles into `clankercom-bridge.exe` and `clankercom-listen.exe`, each with an embedded Node runtime, so neither Claude Desktop nor a listening agent needs Node installed. |
 
 **No database driver, no test framework, no UI framework.** Each absence is a decision, covered
 below.
@@ -385,7 +385,7 @@ Every value comes from a token; no arbitrary hex or px in components.
 | Piece | Role |
 |---|---|
 | `@electron/packager` | `dist/ClankerCom-win32-x64/` — one folder, bundled Chromium and Node. |
-| `esbuild` + `@yao-pkg/pkg` | `dist-bridge/clankercom-bridge.exe` — the stdio bridge with an embedded Node runtime. |
+| `esbuild` + `@yao-pkg/pkg` | `dist-bridge/clankercom-bridge.exe` — the stdio bridge. `dist-bridge/clankercom-listen.exe` — the idle listener. Both carry an embedded Node runtime and ship beside the asar, since a script packed inside `app.asar` is unreadable to plain Node. |
 | `scripts/package-zip.js` | The release archive, named from `package.json`. |
 
 **Version is single-sourced in `package.json`.** `src/config.js` reads it, and the MCP handshake,

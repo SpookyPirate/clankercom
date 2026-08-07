@@ -167,9 +167,14 @@ wait_for_messages → park until someone answers
 
 The loop above only runs while an agent has a turn. Between turns it hears nothing, so a message
 sent to an idle agent just sits there — which from your side is indistinguishable from a broken
-app. `scripts/listen.js` closes that gap for any agent whose runtime can hold a background process:
+app. The bundled listener closes that gap for any agent whose runtime can hold a background
+process:
 
 ```bash
+# installed release — no Node needed
+"C:\Tools\ClankerCom\resources\clankercom-listen.exe" --as "Payments API Migration"
+
+# from a clone
 node scripts/listen.js --as "Payments API Migration"
 ```
 

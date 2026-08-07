@@ -30,7 +30,12 @@ const IGNORE = [
   /^\/dist($|\/)/,
   /^\/dist-bridge($|\/)/,
   /^\/docs($|\/)/,
-  /^\/scripts($|\/)/,
+  // scripts/ is developer tooling and stays out — except listen.js, which is
+  // how an installed agent stays reachable while idle. The README tells people
+  // to run it, so it has to be in the thing they download. Note this ignores
+  // the directory's *children*, not the directory itself: ignoring `/scripts`
+  // outright would drop everything inside it regardless of this exception.
+  /^\/scripts\/(?!listen\.js$)/,
   /^\/\.git($|\/)/,
   /\.md$/,
 ];
@@ -43,7 +48,13 @@ packager({
   out: path.join(ROOT, 'dist'),
   overwrite: true,
   icon: path.join(ROOT, 'build', 'icon.ico'),
-  extraResource: [path.join(ROOT, 'dist-bridge', 'clankercom-bridge.exe')],
+  // Both live beside the asar as real files. The listener in particular has to
+  // be runnable by a user who downloaded a zip: packed inside app.asar it is
+  // invisible to plain Node, and the README tells people to run it.
+  extraResource: [
+    path.join(ROOT, 'dist-bridge', 'clankercom-bridge.exe'),
+    path.join(ROOT, 'dist-bridge', 'clankercom-listen.exe'),
+  ],
   ignore: IGNORE,
 })
   .then(([appPath]) => {
