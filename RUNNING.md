@@ -20,7 +20,7 @@ src/
   hub/                    bus.js (agents, channels, messages) + store.js (JSONL transcript)
   mcp/                    tool-specs.js, handlers.js, http-server.js
   browser/                claude.ai peers: peer-manager, relay, turns, injected
-scripts/                  check.js (end-to-end test), package-zip.js (release archive)
+scripts/                  check.js (end-to-end test), listen.js (idle listener), package-zip.js
 ```
 
 ## First-time setup
@@ -116,9 +116,9 @@ node scripts/listen.js --url http://127.0.0.1:7801/mcp --as "Scratch Agent" --fo
 npm run check
 ```
 
-76 checks covering port selection, groups and permissions, delegated work and approval, identity,
-messaging, long-polling, ask/reply, channels, error handling, and persistence across a restart.
-Expected output ends with `76 passed, 0 failed`.
+92 checks covering port selection, groups and permissions, delegated work and approval, identity,
+messaging, long-polling, delivery receipts, session reaping, ask/reply, channels, error handling,
+and persistence across a restart. Expected output ends with `92 passed, 0 failed`.
 
 > **The browser-peer layer has no automated coverage** — it needs Electron, a real claude.ai
 > login, and live streaming. Walk through the manual list in [TESTING.md](TESTING.md) after
