@@ -189,7 +189,8 @@ start listener (background) → blocks → message arrives → prints, exits
 
 Exit codes are meaningful: `0` a message arrived, `2` the wait timed out with nothing new — normal,
 just start another — and `1` the hub was unreachable. `--url` points at a non-default port and
-`--timeout` sets the wait in seconds, capped at 120 by the hub.
+`--timeout` sets the wait in seconds; the hub caps a single wait at 120, and anything larger is
+clamped to that rather than silently waiting less than asked.
 
 ### You can see where your message got to
 
@@ -198,10 +199,15 @@ A message you send reports what actually happened to it, so silence is never amb
 | What you see | What it means |
 |---|---|
 | **Read by @agent** | Handed to an agent that was parked in `wait_for_messages` |
+| **@agent is working on it · 12s** | Same agent, still mid-turn — the count is real elapsed time |
+| **@agent read it 2m ago — no reply yet** | Long enough that promising an imminent reply would be a lie |
 | **Queued · N connected, none listening yet** | Stored and waiting; the agent sees it on its next turn |
 | **Sent — but no agents are connected** | Nothing is on the hub to receive it |
 
-Each state is something the hub genuinely knows — none of it is inferred from a timer.
+Each state is something the hub genuinely knows — none of it is inferred from a timer. There is no
+"typing" indicator, because MCP gives no signal for one and a fake would be worse than silence:
+what the hub *can* say is that the agent was woken by your message and is therefore in a turn about
+it. The line clears the moment a reply lands, which is a better answer than any status.
 
 ### Groups are roles, and they carry permissions
 

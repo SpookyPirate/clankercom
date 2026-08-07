@@ -151,6 +151,85 @@ async function bootAndBind(portValue) {
 }
 
 // ============================================
+// Session reaping
+// ============================================
+
+/**
+ * A client that vanishes without a DELETE must not stay online forever.
+ *
+ * `transport.onclose` only fires on explicit termination, but the ordinary
+ * shape of an agent is a short-lived process that connects, works, and exits.
+ * Those sessions accumulated indefinitely and their agents stayed green, so
+ * the roster reported a crowd that had long since left — and the delivery
+ * status counted those phantoms when telling the human how many agents were
+ * connected.
+ *
+ * Runs on its own hub: reaping closes every session, which would pull the
+ * transport out from under any client the rest of the suite still holds.
+ */
+async function verifySessionReaping() {
+  console.log('\nsession reaping');
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-sessions-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  const server = createHubServer({ hub, peers: null });
+  const { httpServer, port } = await server.listen();
+  const url = `http://127.0.0.1:${port}/mcp`;
+
+  // Keeps the transport, so a client can be made to vanish the way a killed
+  // process does — socket gone, no DELETE, nothing to notify the server.
+  const attach = async (name) => {
+    const client = new Client({ name, version: '1.0.0' });
+    const transport = new StreamableHTTPClientTransport(new URL(url), {
+      requestInit: { headers: { 'X-Clanker-Agent': name } },
+    });
+    await client.connect(transport);
+    await call(client, 'list_channels');
+    return transport;
+  };
+
+  try {
+    const staying = await attach('staying');
+    const leaving = await attach('leaving');
+
+    check('live clients hold sessions', server.sessionCount() === 2, server.sessionCount());
+    check(
+      'agents are online while connected',
+      hub.listAgents().filter((a) => a.status === 'online').length === 2
+    );
+
+    // Far past the idle limit, but both clients are alive: a connected client
+    // holds its server-to-client stream open, and reaping it would disconnect
+    // an agent that is behaving correctly.
+    const future = Date.now() + 6 * 60 * 1000;
+    check('a live client is never reaped, however long it is quiet', server.sweepIdleSessions(future).length === 0);
+    check('both agents stay online', hub.listAgents().filter((a) => a.status === 'online').length === 2);
+
+    // Now one goes away the way a process exiting does.
+    await leaving.close();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    const reaped = server.sweepIdleSessions(future);
+    check('a vanished client is reaped', reaped.length === 1, `${reaped.length} reaped`);
+    check('the surviving session is untouched', server.sessionCount() === 1, server.sessionCount());
+
+    const online = hub.listAgents().filter((a) => a.status === 'online').map((a) => a.handle);
+    check('the vanished agent goes offline', !online.includes('leaving'), online);
+    check('the live agent stays online', online.includes('staying'), online);
+
+    await staying.close();
+  } finally {
+    hub.releaseWaiters();
+    await server.closeAllSessions();
+    await new Promise((resolve) => httpServer.close(resolve));
+    await store.close();
+  }
+}
+
+// ============================================
 // Groups, permissions, and delegated work
 // ============================================
 
@@ -443,6 +522,7 @@ async function verifyReconnectIdentity() {
 async function main() {
   await verifyPortSelection();
   await verifyReconnectIdentity();
+  await verifySessionReaping();
   await verifyGroupsAndTasks();
   await verifyFilesAndHistory();
 
@@ -556,6 +636,7 @@ async function runScenario(url, hub) {
     undelivered.deliveredTo.length === 0,
     undelivered.deliveredTo
   );
+
 
   // ---- ask blocks until the peer answers ----
   const asking = call(lead, 'ask', {

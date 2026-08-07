@@ -45,9 +45,17 @@ function arg(name, fallback = null) {
 
 const HUB_URL = arg('url', process.env.CLANKER_HUB_URL || 'http://127.0.0.1:7777/mcp');
 const AGENT_NAME = arg('as', process.env.CLANKER_AGENT || null);
-const TIMEOUT_SECONDS = Number(arg('timeout', '120'));
+
+// The hub caps a single wait at 120s; asking for more just means waiting less
+// than requested, which is worth saying rather than silently doing.
+const HUB_MAX_WAIT = 120;
+const requested = Number(arg('timeout', '120'));
+const WAIT_SECONDS = Math.max(1, Math.min(HUB_MAX_WAIT, Number.isFinite(requested) ? requested : 120));
 
 const textOf = (result) => (result.content || []).map((part) => part.text || '').join('\n');
+
+/** JSON-RPC -32001 is the SDK's request-timeout code. */
+const isTimeout = (error) => error?.code === -32001 || /timed out/i.test(error?.message || '');
 
 (async () => {
   const client = new Client({ name: 'clankercom-listener', version: '2.0.0' });
@@ -70,16 +78,34 @@ const textOf = (result) => (result.content || []).map((part) => part.text || '')
     process.exit(1);
   }
 
-  const result = await client.callTool({
-    name: 'wait_for_messages',
-    arguments: { timeout_seconds: Math.max(1, Math.min(120, TIMEOUT_SECONDS)) },
-  });
-  const body = textOf(result);
+  let body;
+  try {
+    const result = await client.callTool(
+      { name: 'wait_for_messages', arguments: { timeout_seconds: WAIT_SECONDS } },
+      undefined,
+      // Deliberately blocking, so the client must be told to allow it. The SDK
+      // times a request out after 60s by default and aborts — which killed any
+      // wait longer than a minute with "Request timed out", exit 1, looking
+      // like a dead hub rather than a listener doing its job. The margin
+      // covers the round trip so the hub's own timeout always fires first.
+      { timeout: WAIT_SECONDS * 1000 + 15000 }
+    );
+    body = textOf(result);
+  } catch (error) {
+    await client.close().catch(() => {});
+    // A wait that ran out is the ordinary case, not a failure — same exit code
+    // as the hub's own "nothing arrived", so callers treat them alike.
+    if (isTimeout(error)) {
+      console.log(`Nothing arrived in ${WAIT_SECONDS}s. Normal — start another listener.`);
+      process.exit(2);
+    }
+    throw error;
+  }
   await client.close();
 
   if (/^No new messages/.test(body)) {
     console.log(
-      `Nothing arrived in ${TIMEOUT_SECONDS}s. Normal — start another listener to keep waiting.`
+      `Nothing arrived in ${WAIT_SECONDS}s. Normal — start another listener to keep waiting.`
     );
     process.exit(2);
   }

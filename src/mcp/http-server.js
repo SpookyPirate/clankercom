@@ -132,6 +132,8 @@ function createHubServer({ hub, peers }) {
       id: null, // assigned by the transport on initialize
       agentId: null,
       clientInfo: null,
+      lastSeen: Date.now(),
+      inFlight: 0, // open requests: a long-poll or an SSE stream counts
       requestedHandle: decodeHeader(headers[AGENT_HEADER]),
       requestedPlatform: decodeHeader(headers[PLATFORM_HEADER]),
     };
@@ -179,6 +181,66 @@ function createHubServer({ hub, peers }) {
     if (session.agentId) hub.setAgentStatus(session.agentId, 'offline');
   }
 
+  /**
+   * Drop sessions whose client has gone away without saying so.
+   *
+   * `transport.onclose` only fires on an explicit DELETE, but the ordinary
+   * shape of an agent is a short-lived process that connects, does its work,
+   * and exits — no DELETE, no socket the server can watch. Those sessions
+   * accumulated forever and their agents stayed green forever, so the roster
+   * reported a crowd that had long since left, and the delivery status counted
+   * those phantoms when telling the human how many agents were connected.
+   *
+   * Idleness is measured from the end of the last request, and a session with
+   * anything still open is never a candidate. That distinction matters: a
+   * parked long-poll and a client's server-to-client SSE stream both hold a
+   * request open for minutes or hours while stamping `lastSeen` only once, at
+   * the start. Reaping on start time alone would disconnect exactly the agents
+   * that are behaving correctly — worse than the leak being fixed.
+   */
+  const IDLE_LIMIT_MS = 5 * 60 * 1000;
+  const SWEEP_EVERY_MS = 30 * 1000;
+
+  /** Hold a session open for the life of a request, and stamp it on the way out. */
+  function trackRequest(session, res) {
+    session.inFlight++;
+    session.lastSeen = Date.now();
+
+    // Both events fire for an ordinary response, so the release is latched —
+    // decrementing twice would under-count concurrent requests and make a live
+    // session look reapable.
+    let released = false;
+    const done = () => {
+      if (released) return;
+      released = true;
+      session.inFlight = Math.max(0, session.inFlight - 1);
+      session.lastSeen = Date.now();
+    };
+    res.once('close', done);
+    res.once('finish', done);
+  }
+
+  function sweepIdleSessions(now = Date.now()) {
+    const reaped = [];
+    for (const session of Array.from(sessions.values())) {
+      if (session.inFlight > 0) continue;
+      if (now - session.lastSeen < IDLE_LIMIT_MS) continue;
+      reaped.push(session.id);
+      try {
+        // Fires onclose, which marks the agent offline and forgets the session.
+        session.transport.close();
+      } catch {
+        // Already gone; make sure it leaves the map regardless.
+        closeSession(session);
+      }
+    }
+    return reaped;
+  }
+
+  const sweeper = setInterval(() => sweepIdleSessions(), SWEEP_EVERY_MS);
+  // Never hold the process open for a housekeeping timer.
+  if (typeof sweeper.unref === 'function') sweeper.unref();
+
   // ============================================
   // Routes
   // ============================================
@@ -200,6 +262,7 @@ function createHubServer({ hub, peers }) {
       await session.server.connect(session.transport);
     }
 
+    trackRequest(session, res);
     await session.transport.handleRequest(req, res, req.body);
   });
 
@@ -207,6 +270,7 @@ function createHubServer({ hub, peers }) {
   const handleSessionRequest = async (req, res) => {
     const session = sessions.get(req.headers['mcp-session-id']);
     if (!session) return res.status(404).send('Unknown session');
+    trackRequest(session, res);
     await session.transport.handleRequest(req, res);
   };
 
@@ -283,6 +347,7 @@ function createHubServer({ hub, peers }) {
 
   /** Close every live session. Called during shutdown. */
   async function closeAllSessions() {
+    clearInterval(sweeper);
     for (const session of Array.from(sessions.values())) {
       try {
         await session.transport.close();
@@ -293,7 +358,15 @@ function createHubServer({ hub, peers }) {
     sessions.clear();
   }
 
-  return { app, listen, closeAllSessions, getPort: () => boundPort };
+  return {
+    app,
+    listen,
+    closeAllSessions,
+    getPort: () => boundPort,
+    // Exposed so the reaping can be tested without waiting five real minutes.
+    sweepIdleSessions,
+    sessionCount: () => sessions.size,
+  };
 }
 
 module.exports = { createHubServer };

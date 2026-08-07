@@ -1294,6 +1294,25 @@ button {
   background: var(--signal-bright);
 }
 
+/* Read, and the agent is mid-turn. Green like is-seen, because the message did
+   arrive — but breathing, since something is still happening. The elapsed
+   count beside it is the honest part: real time, visibly moving. */
+.delivery.is-working .delivery-pulse {
+  background: var(--live);
+  animation: waiting 1.6s var(--ease) infinite;
+}
+
+/* Long enough that implying an imminent reply would be a lie. It stops moving
+   deliberately: a spinner that never resolves teaches you to ignore the line. */
+.delivery.is-quiet {
+  color: var(--ink-dim);
+}
+
+.delivery.is-quiet .delivery-pulse {
+  background: var(--ink-ghost);
+  animation: none;
+}
+
 .delivery.is-unheard .delivery-pulse {
   background: var(--standby);
   animation: none;

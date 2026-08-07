@@ -34,6 +34,7 @@ const state = {
   searchQuery: '',     // guards against a stale response overwriting newer results
   listeners: [],       // agents currently parked in wait_for_messages
   pendingDelivery: null,// the message whose fate the console is reporting
+  deliveryClock: null,  // ticks the elapsed time on that status line
   peerViews: new Map(),// peerId -> webview element
   activePeerId: null,
 };
@@ -652,7 +653,7 @@ async function selectChannel(channelName) {
     state.searchQuery = '';
   }
 
-  if (state.pendingDelivery?.channelName !== channelName) state.pendingDelivery = null;
+  if (state.pendingDelivery?.channelName !== channelName) clearDelivery();
 
   state.activeChannel = channelName;
   setView('channel');
@@ -940,6 +941,11 @@ window.clanker.on('window:state', ({ maximized }) => renderWindowState(maximized
  * "read" means an agent was genuinely handed the message, and "replying" comes
  * from a browser peer's real relay phase.
  */
+/** How long "Read by" holds before it admits the agent is still thinking. */
+const WORKING_AFTER_MS = 3000;
+/** And how long before it stops implying an answer is imminent. */
+const QUIET_AFTER_MS = 120000;
+
 function renderDelivery() {
   document.querySelector('.delivery')?.remove();
 
@@ -960,9 +966,26 @@ function renderDelivery() {
   let hint = '';
 
   if (pending.seenBy.length) {
-    tone = 'is-seen';
-    text = `Read by ${pending.seenBy.map((handle) => '@' + handle).join(', ')}`;
-    if (replying) text += ` · @${replying.handle} is replying…`;
+    const who = pending.seenBy.map((handle) => '@' + handle).join(', ');
+    const waited = pending.readAt ? Date.now() - pending.readAt : 0;
+
+    if (replying) {
+      // A browser peer reports its own relay phase, so this one is observed
+      // rather than inferred — the strongest signal available.
+      tone = 'is-seen';
+      text = `${who} read it · @${replying.handle} is replying…`;
+    } else if (waited > QUIET_AFTER_MS) {
+      // Animating forever is how a status bar teaches you to ignore it.
+      tone = 'is-quiet';
+      text = `${who} read it ${since(pending.readAt)} ago — no reply yet`;
+      hint = 'Agents answer on their next turn; a long task can take a while.';
+    } else if (waited > WORKING_AFTER_MS) {
+      tone = 'is-working';
+      text = `${who} is working on it · ${since(pending.readAt)}`;
+    } else {
+      tone = 'is-seen';
+      text = `Read by ${who}`;
+    }
   } else if (replying) {
     text = `@${replying.handle} is replying…`;
   } else if (online) {
@@ -997,8 +1020,41 @@ function trackDelivery(message) {
     // send itself, so its receipt is emitted before this row exists. The hub
     // reports that delivery in the reply instead of us missing the event.
     seenBy: message.deliveredTo || [],
+    readAt: message.deliveredTo?.length ? Date.now() : null,
   };
+  startDeliveryClock();
   renderDelivery();
+}
+
+/**
+ * Keep the waiting line moving while an agent is mid-turn.
+ *
+ * Once an agent has been handed the message it is genuinely working — it was
+ * woken by it — but there is no signal for "composing a reply", and a typing
+ * indicator invented on a timer would be worse than silence. So the row shows
+ * elapsed time instead: real information, and it visibly advances, which is
+ * what tells the human the app is alive.
+ */
+function startDeliveryClock() {
+  clearInterval(state.deliveryClock);
+  state.deliveryClock = setInterval(() => {
+    if (!state.pendingDelivery) return clearInterval(state.deliveryClock);
+    renderDelivery();
+  }, 1000);
+}
+
+/** Forget the tracked message and stop its clock. */
+function clearDelivery() {
+  state.pendingDelivery = null;
+  clearInterval(state.deliveryClock);
+  state.deliveryClock = null;
+}
+
+/** "3s" · "2m 04s" — short enough to sit inside a status line. */
+function since(timestamp) {
+  const seconds = Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
 }
 
 // ============================================
@@ -1724,7 +1780,7 @@ window.clanker.on('hub:message', (message) => {
 
     // Somebody answered, which is a better answer than any status line.
     if (state.pendingDelivery && message.authorHandle !== state.self?.handle) {
-      state.pendingDelivery = null;
+      clearDelivery();
     }
 
     document.querySelector('.delivery')?.remove();
@@ -1808,6 +1864,10 @@ window.clanker.on('hub:listeners', (handles) => {
 window.clanker.on('hub:seen', ({ id, seenBy }) => {
   if (state.pendingDelivery?.id !== id) return;
   state.pendingDelivery.seenBy = seenBy;
+  // An agent that caught up with read_messages rather than being woken starts
+  // its turn now, not when the message was sent.
+  state.pendingDelivery.readAt = state.pendingDelivery.readAt || Date.now();
+  startDeliveryClock();
   renderDelivery();
 });
 
