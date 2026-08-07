@@ -12,7 +12,7 @@
  * Used by: src/mcp/http-server.js
  */
 
-const { TIMEOUTS } = require('../config');
+const { TIMEOUTS, DEFAULT_CHANNEL } = require('../config');
 const { slugify } = require('../hub/bus');
 
 // ============================================
@@ -80,6 +80,7 @@ function ensureIdentity(context) {
   const { hub, session } = context;
   if (session.agentId && hub.getAgent(session.agentId)) {
     hub.touchAgent(session.agentId);
+    applyRequestedChannels(context);
     return hub.getAgent(session.agentId);
   }
 
@@ -97,7 +98,46 @@ function ensureIdentity(context) {
   });
 
   session.agentId = agent.id;
+  applyRequestedChannels(context);
   return agent;
+}
+
+/**
+ * Place an agent in the channels its connection asked for.
+ *
+ * Driven by the optional `X-Clanker-Channel` header, so six agents can be split
+ * across two workstreams from their MCP config alone rather than each having to
+ * be told to join and leave by hand. Omit the header and nothing here happens —
+ * the agent lands in the default channel exactly as before.
+ *
+ * Applied here rather than at session setup because this is the one point where
+ * an identity is guaranteed to exist: an agent that sends no `X-Clanker-Agent`
+ * has no agent record until its first tool call.
+ */
+function applyRequestedChannels(context) {
+  const { hub, session } = context;
+  if (!session.requestedChannels || session.channelsApplied || !session.agentId) return;
+  session.channelsApplied = true;
+
+  const wanted = String(session.requestedChannels)
+    .split(',')
+    .map((name) => name.trim().replace(/^#/, ''))
+    .filter(Boolean);
+  if (!wanted.length) return;
+
+  // createChannel returns the existing channel when the name is already taken,
+  // so this both creates and joins without needing to know which it is doing.
+  const joined = wanted.map((name) => {
+    const channel = hub.createChannel({ name, createdBy: session.agentId });
+    hub.joinChannel(session.agentId, channel.id);
+    return channel.name;
+  });
+
+  // Registration drops every new agent into the default channel. Naming where
+  // an agent works is a statement that the default is not it — otherwise the
+  // separation this header exists to provide would not actually happen. List it
+  // explicitly to keep it. Channels joined by any other means are untouched.
+  if (!joined.includes(DEFAULT_CHANNEL)) hub.leaveChannel(session.agentId, DEFAULT_CHANNEL);
 }
 
 /**

@@ -151,6 +151,90 @@ async function bootAndBind(portValue) {
 }
 
 // ============================================
+// Channel placement and scoped listening
+// ============================================
+
+/**
+ * Splitting agents across workstreams so they do not overhear each other.
+ *
+ * Two mechanisms, and the distinction matters: `X-Clanker-Channel` decides
+ * where an agent *is*, while the `channels` argument to wait_for_messages
+ * decides what it *listens to* without changing membership. The header has to
+ * stay optional — an agent that omits it must land in the default channel
+ * exactly as before, or every existing setup changes meaning.
+ */
+async function verifyChannelPlacement() {
+  console.log('\nchannel placement');
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-channels-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  const server = createHubServer({ hub, peers: null });
+  const { httpServer, port } = await server.listen();
+  const url = `http://127.0.0.1:${port}/mcp`;
+
+  const connect = async (name, channel) => {
+    const headers = { 'X-Clanker-Agent': name };
+    if (channel) headers['X-Clanker-Channel'] = channel;
+    const client = new Client({ name, version: '1.0.0' });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers } })
+    );
+    await call(client, 'list_channels'); // first tool call settles identity
+    return client;
+  };
+
+  try {
+    const apiOne = await connect('api-1', 'api-work');
+    const apiTwo = await connect('api-2', 'api-work');
+    const uiOne = await connect('ui-1', 'ui-work');
+    await connect('plain-agent');
+
+    check('the header creates and joins the named channel', hub.getChannel('api-work')?.members.size === 2, hub.getChannel('api-work')?.members.size);
+    check('a second workstream stays separate', hub.getChannel('ui-work')?.members.size === 1);
+    check(
+      'a named channel replaces the default placement',
+      !hub.getAgentByHandle('api-1').channels.has(hub.getChannel('general').id)
+    );
+    check(
+      'an agent that sends no header still lands in the default channel',
+      hub.getAgentByHandle('plain-agent').channels.has(hub.getChannel('general').id)
+    );
+
+    // Nobody hears the other workstream.
+    const apiWaiting = call(apiTwo, 'wait_for_messages', { timeout_seconds: 6 });
+    const uiWaiting = call(uiOne, 'wait_for_messages', { timeout_seconds: 6 });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await call(apiOne, 'send_message', { channel: 'api-work', text: 'API team only.' });
+
+    check('the other workstream hears its own message', (await apiWaiting).includes('API team only'));
+    check('the unrelated workstream hears nothing', (await uiWaiting).includes('No new messages'));
+
+    // Scoped listening: a member of a channel can still decline to hear it.
+    await call(apiTwo, 'join_channel', { channel: 'general' });
+    const scoped = call(apiTwo, 'wait_for_messages', {
+      timeout_seconds: 6,
+      channels: ['api-work'],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await call(apiOne, 'send_message', { channel: 'general', text: 'Noise nobody wants.' });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    await call(apiOne, 'send_message', { channel: 'api-work', text: 'The wanted one.' });
+
+    const heard = await scoped;
+    check('scoped listening ignores a channel the agent is in', !heard.includes('Noise nobody wants'), heard);
+    check('scoped listening still wakes on the named channel', heard.includes('The wanted one'), heard);
+  } finally {
+    hub.releaseWaiters();
+    await server.closeAllSessions();
+    await new Promise((resolve) => httpServer.close(resolve));
+    await store.close();
+  }
+}
+
+// ============================================
 // Session reaping
 // ============================================
 
@@ -522,6 +606,7 @@ async function verifyReconnectIdentity() {
 async function main() {
   await verifyPortSelection();
   await verifyReconnectIdentity();
+  await verifyChannelPlacement();
   await verifySessionReaping();
   await verifyGroupsAndTasks();
   await verifyFilesAndHistory();

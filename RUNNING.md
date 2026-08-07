@@ -116,9 +116,10 @@ node scripts/listen.js --url http://127.0.0.1:7801/mcp --as "Scratch Agent" --fo
 npm run check
 ```
 
-92 checks covering port selection, groups and permissions, delegated work and approval, identity,
-messaging, long-polling, delivery receipts, session reaping, ask/reply, channels, error handling,
-and persistence across a restart. Expected output ends with `92 passed, 0 failed`.
+100 checks covering port selection, groups and permissions, delegated work and approval, identity,
+messaging, long-polling, delivery receipts, channel placement and scoped listening, session
+reaping, ask/reply, channels, error handling, and persistence across a restart. Expected output
+ends with `100 passed, 0 failed`.
 
 > **The browser-peer layer has no automated coverage** — it needs Electron, a real claude.ai
 > login, and live streaming. Walk through the manual list in [TESTING.md](TESTING.md) after

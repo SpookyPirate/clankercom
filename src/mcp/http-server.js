@@ -40,6 +40,9 @@ const { handlers } = require('./handlers');
 //   claude mcp add --transport http clankercom <url> --header "X-Clanker-Agent: reviewer"
 const AGENT_HEADER = 'x-clanker-agent';
 const PLATFORM_HEADER = 'x-clanker-platform';
+// Optional. Names the channels this connection works in, comma-separated.
+// Omitted, the agent lands in the default channel exactly as it always has.
+const CHANNEL_HEADER = 'x-clanker-channel';
 
 /**
  * Read a header value that may carry a name we cannot send as-is.
@@ -136,6 +139,7 @@ function createHubServer({ hub, peers }) {
       inFlight: 0, // open requests: a long-poll or an SSE stream counts
       requestedHandle: decodeHeader(headers[AGENT_HEADER]),
       requestedPlatform: decodeHeader(headers[PLATFORM_HEADER]),
+      requestedChannels: decodeHeader(headers[CHANNEL_HEADER]),
     };
 
     const transport = new StreamableHTTPServerTransport({

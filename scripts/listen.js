@@ -27,6 +27,7 @@
  *                          [--timeout 120]      one wait, in seconds (hub caps at 120)
  *                          [--follow]           keep waiting until something arrives
  *                          [--follow-for 3600]  total budget for --follow
+ *                          [--channel a,b]      only wake for these channels
  *
  * Prefer `--follow`. Without it the hub's 120s ceiling becomes the wake-up
  * cadence, so a quiet hub interrupts the agent every two minutes to report that
@@ -71,6 +72,14 @@ const WAIT_SECONDS = Math.max(1, Math.min(HUB_MAX_WAIT, Number.isFinite(requeste
 const FOLLOW = process.argv.includes('--follow') || process.argv.includes('-f');
 const followFor = Number(arg('follow-for', '3600'));
 const FOLLOW_SECONDS = Math.max(WAIT_SECONDS, Number.isFinite(followFor) ? followFor : 3600);
+
+// Narrow what wakes this listener, without the agent having to leave the
+// channels it is not currently interested in. Omitted, it hears everything it
+// is a member of, which is the old behaviour.
+const CHANNELS = (arg('channel', '') || '')
+  .split(',')
+  .map((name) => name.trim().replace(/^#/, ''))
+  .filter(Boolean);
 
 const textOf = (result) => (result.content || []).map((part) => part.text || '').join('\n');
 
@@ -143,7 +152,13 @@ async function reconnect(deadline) {
     let body;
     try {
       const result = await client.callTool(
-        { name: 'wait_for_messages', arguments: { timeout_seconds: WAIT_SECONDS } },
+        {
+          name: 'wait_for_messages',
+          arguments: {
+            timeout_seconds: WAIT_SECONDS,
+            ...(CHANNELS.length ? { channels: CHANNELS } : {}),
+          },
+        },
         undefined,
         // Deliberately blocking, so the client must be told to allow it. The
         // SDK times a request out after 60s by default and aborts — which

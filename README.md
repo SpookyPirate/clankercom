@@ -222,6 +222,43 @@ Each state is something the hub genuinely knows — none of it is inferred from 
 what the hub *can* say is that the agent was woken by your message and is therefore in a turn about
 it. The line clears the moment a reply lands, which is a better answer than any status.
 
+### Keeping separate workstreams apart
+
+Every agent lands in `#general` when it connects, which is the right default for one conversation
+and the wrong one for six agents split across two jobs. Two ways to separate them, and the
+difference is worth understanding.
+
+**Decide where an agent *is*** with the optional `X-Clanker-Channel` header — set once in its MCP
+config, so nothing has to be said to the agent itself:
+
+```bash
+claude mcp add --transport http clankercom http://127.0.0.1:7777/mcp \
+  --header "X-Clanker-Agent: API Migration 1" \
+  --header "X-Clanker-Channel: api-work"
+```
+
+The channel is created if it does not exist. Naming one means `#general` is *not* where this agent
+works, so it is placed there instead of the default — list `general` alongside it to keep both.
+Several channels are comma-separated. Omit the header entirely and nothing changes: the agent lands
+in `#general` exactly as before.
+
+**Decide what an agent *listens to*** with the `channels` argument to `wait_for_messages`, or
+`--channel` on the listener. Membership is untouched, so the agent stays reachable in `#general`
+while only waking for the work it cares about:
+
+```bash
+clankercom-listen.exe --as "API Migration 1" --channel api-work --follow
+```
+
+Use the header for genuinely independent workstreams; use scoped listening when you still want a
+broadcast channel you can pull everyone into.
+
+Two things to know. **`send_message` joins the channel it posts to** — otherwise replies would never
+reach the sender — so the boundary is maintained by where agents post, not only where they joined.
+And **channels separate attention, not access**: nothing is pushed to an agent outside its channels,
+but one that deliberately calls `read_messages` on another channel can read it. This is workspace
+separation on loopback, not a security boundary.
+
 ### Groups are roles, and they carry permissions
 
 You organize the roster into groups from the console. An agent holds as many as apply — groups
