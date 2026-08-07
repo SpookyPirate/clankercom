@@ -72,19 +72,55 @@ const textOf = (result) => (result.content || []).map((part) => part.text || '')
 /** JSON-RPC -32001 is the SDK's request-timeout code. */
 const isTimeout = (error) => error?.code === -32001 || /timed out/i.test(error?.message || '');
 
-(async () => {
-  const client = new Client({ name: 'clankercom-listener', version: '2.0.0' });
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+async function openClient() {
+  const client = new Client({ name: 'clankercom-listener', version: '2.0.0' });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(HUB_URL), {
+      // Header values are latin-1 only, so a name with an em-dash or an accent
+      // has to be percent-encoded; the hub decodes it. Identity comes from the
+      // header rather than join_hub precisely so a reconnect lands back on the
+      // same agent — cursor intact, so nothing sent during a gap is missed.
+      requestInit: AGENT_NAME
+        ? { headers: { 'X-Clanker-Agent': encodeURIComponent(AGENT_NAME) } }
+        : undefined,
+    })
+  );
+  return client;
+}
+
+const RECONNECT_DELAY_MS = 2000;
+
+/**
+ * Get back in after the hub goes away, which in practice means it was
+ * restarted. Returns null if the follow budget runs out first.
+ *
+ * Printing here costs nothing: a background task only wakes its agent when the
+ * process *exits*, so progress notes accumulate in the log without spending a
+ * turn.
+ */
+async function reconnect(deadline) {
+  console.log('Lost the hub — it was probably restarted. Reconnecting…');
+  let attempts = 0;
+  while (Date.now() < deadline) {
+    await sleep(RECONNECT_DELAY_MS);
+    attempts++;
+    try {
+      const client = await openClient();
+      console.log(`Reconnected after ${attempts} attempt(s). Still listening.`);
+      return client;
+    } catch {
+      // The app is probably still starting. Keep trying until the budget ends.
+    }
+  }
+  return null;
+}
+
+(async () => {
+  let client;
   try {
-    await client.connect(
-      new StreamableHTTPClientTransport(new URL(HUB_URL), {
-        // Header values are latin-1 only, so a name with an em-dash or an
-        // accent has to be percent-encoded; the hub decodes it.
-        requestInit: AGENT_NAME
-          ? { headers: { 'X-Clanker-Agent': encodeURIComponent(AGENT_NAME) } }
-          : undefined,
-      })
-    );
+    client = await openClient();
   } catch (error) {
     console.error(
       `Could not reach the ClankerCom hub at ${HUB_URL}.\n` +
@@ -113,11 +149,28 @@ const isTimeout = (error) => error?.code === -32001 || /timed out/i.test(error?.
       );
       body = textOf(result);
     } catch (error) {
-      if (!isTimeout(error)) {
+      if (isTimeout(error)) {
+        body = 'No new messages';
+      } else {
+        // The hub went away mid-wait. Previously this killed the listener, so
+        // restarting the app silently deafened every agent parked against it —
+        // the exact failure this script exists to prevent, and invisible
+        // because a dead listener looks identical to a quiet one.
         await client.close().catch(() => {});
-        throw error;
+        if (!FOLLOW) {
+          console.error(
+            `Lost the ClankerCom hub at ${HUB_URL} — restart it, then start another listener. (${error.message})`
+          );
+          process.exit(1);
+        }
+
+        client = await reconnect(deadline);
+        if (!client) {
+          console.error(`Lost the hub at ${HUB_URL} and could not get back in before the budget ran out.`);
+          process.exit(1);
+        }
+        continue;
       }
-      body = 'No new messages';
     }
 
     const quiet = /^No new messages/.test(body);

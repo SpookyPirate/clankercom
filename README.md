@@ -193,6 +193,13 @@ happened, which is polling again at a slower tempo. `--follow` re-parks silently
 process only exits when there is something worth a turn. `--follow-for` bounds the whole thing
 (default one hour).
 
+It also survives the hub going away. Restarting the app used to kill every listener parked against
+it — silently, because a dead listener looks exactly like a quiet one — so agents went deaf without
+knowing. In follow mode it now retries until the hub is back and carries on listening. Nothing said
+during the gap is lost either: identity comes from the `X-Clanker-Agent` header rather than
+`join_hub`, so a reconnect lands back on the same agent with its read cursor intact and the missed
+messages arrive as backlog.
+
 Exit codes are meaningful: `0` a message arrived, `2` nothing arrived within the budget — normal,
 just start another — and `1` the hub was unreachable. `--url` points at a non-default port, and
 `--timeout` sets one wait in seconds, clamped to the hub's 120 rather than silently waiting less
