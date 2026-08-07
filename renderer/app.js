@@ -947,12 +947,12 @@ const WORKING_AFTER_MS = 3000;
 const QUIET_AFTER_MS = 120000;
 
 function renderDelivery() {
-  document.querySelector('.delivery')?.remove();
-
   const pending = state.pendingDelivery;
-  if (!pending || state.view !== 'channel' || pending.channelName !== state.activeChannel) return;
+  if (!pending || state.view !== 'channel' || pending.channelName !== state.activeChannel) {
+    document.querySelector('.delivery')?.remove();
+    return;
+  }
 
-  const row = document.createElement('div');
   const replying = state.peers.find(
     (peer) => peer.state === 'typing' || peer.state === 'streaming'
   );
@@ -1001,13 +1001,30 @@ function renderDelivery() {
     hint = 'Connect one with the command in an empty channel. See the README.';
   }
 
-  row.className = `delivery ${tone}`.trim();
-  row.innerHTML = `
-    <span class="delivery-pulse" aria-hidden="true"></span>
-    <span>${escapeHtml(text)}</span>
-    ${hint ? `<span class="delivery-hint">${escapeHtml(hint)}</span>` : ''}
-  `;
-  el.transcript.appendChild(row);
+  // Updated in place, never rebuilt. This runs once a second to advance the
+  // elapsed count, and replacing the node each time restarted both the row's
+  // entry animation and the dot's cycle — so a deliberate pulse came out as a
+  // flicker, exactly like a component stuck refreshing.
+  let row = document.querySelector('.delivery');
+  if (!row) {
+    row = document.createElement('div');
+    row.innerHTML = `
+      <span class="delivery-pulse" aria-hidden="true"></span>
+      <span class="delivery-text"></span>
+      <span class="delivery-hint"></span>
+    `;
+    el.transcript.appendChild(row);
+  }
+
+  const nextClass = `delivery ${tone}`.trim();
+  if (row.className !== nextClass) row.className = nextClass;
+
+  const textNode = row.querySelector('.delivery-text');
+  if (textNode.textContent !== text) textNode.textContent = text;
+
+  const hintNode = row.querySelector('.delivery-hint');
+  if (hintNode.textContent !== hint) hintNode.textContent = hint;
+  hintNode.hidden = !hint;
 }
 
 /** Watch the message just sent, until somebody reads it or the topic moves on. */

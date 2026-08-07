@@ -1267,39 +1267,72 @@ button {
   animation: arrive 200ms var(--ease-out);
 }
 
+/* The dot is a steady core that never dims. Earlier it pulsed its own opacity
+   down to 0.25, which read as a status light blinking out — a fault signal, not
+   an activity one — and the row was being rebuilt every second on top of that,
+   restarting both the fade-in and the pulse. Deliberate motion has to be one
+   continuous cycle on an element that stays put. */
 .delivery-pulse {
+  position: relative;
   width: 6px;
   height: 6px;
   flex: 0 0 6px;
   border-radius: 50%;
   background: var(--ink-faint);
-  animation: waiting 1.6s var(--ease) infinite;
+  transition: background-color 240ms var(--ease);
 }
 
-/* Slow and low-contrast on purpose: this runs for as long as nobody answers,
-   and anything livelier would be a distraction rather than a signal. */
-@keyframes waiting {
-  0%, 100% { opacity: 0.25; transform: scale(0.8); }
-  50%      { opacity: 0.9;  transform: scale(1); }
+/* The moving part is a separate ring layered under the dot, so activity is
+   expressed by something radiating *from* the light rather than by the light
+   itself flickering. */
+.delivery-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0;
+}
+
+/* Emitted, not blinked: one ring travels out and fades, then the next follows.
+   Held at full transparency for the tail of the cycle so there is a beat of
+   rest between rings — without it the ring restarts on top of itself and reads
+   as a stutter. Linear-ish easing, since this is continuous rather than a
+   transition between two states. */
+@keyframes emit {
+  0%   { opacity: 0.5; transform: scale(1); }
+  70%  { opacity: 0;   transform: scale(3); }
+  100% { opacity: 0;   transform: scale(3); }
+}
+
+/* Breathing, for a message that is simply waiting its turn. Slower than the
+   emit cycle and shallower — it should register as calm, not as urgent, since
+   it may run for a long time. Never below 0.55, so it always looks lit. */
+@keyframes breathe {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
 }
 
 .delivery.is-seen .delivery-pulse {
   background: var(--live);
-  animation: none;
 }
 
-/* Queued and waiting. The pulse keeps its animation — that movement is the
+/* Queued: connected, not listening. Blue and breathing — the movement is the
    whole point, since a still line is what made the app look frozen. */
 .delivery.is-waiting .delivery-pulse {
   background: var(--signal-bright);
+  animation: breathe 2.4s ease-in-out infinite;
 }
 
-/* Read, and the agent is mid-turn. Green like is-seen, because the message did
-   arrive — but breathing, since something is still happening. The elapsed
-   count beside it is the honest part: real time, visibly moving. */
+/* Read, and the agent is mid-turn. Green like is-seen because the message did
+   arrive, but emitting, because something is still happening. The elapsed count
+   beside it is the honest part: real time, visibly moving. */
 .delivery.is-working .delivery-pulse {
   background: var(--live);
-  animation: waiting 1.6s var(--ease) infinite;
+}
+
+.delivery.is-working .delivery-pulse::after {
+  animation: emit 2s cubic-bezier(0, 0, 0.25, 1) infinite;
 }
 
 /* Long enough that implying an imminent reply would be a lie. It stops moving
@@ -1310,12 +1343,10 @@ button {
 
 .delivery.is-quiet .delivery-pulse {
   background: var(--ink-ghost);
-  animation: none;
 }
 
 .delivery.is-unheard .delivery-pulse {
   background: var(--standby);
-  animation: none;
 }
 
 .delivery.is-unheard {
