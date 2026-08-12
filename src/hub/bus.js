@@ -81,7 +81,8 @@ class Hub extends EventEmitter {
     this.handles = new Map();    // handle   -> agentId
     this.channels = new Map();   // channelId -> channel
     this.channelNames = new Map(); // name    -> channelId
-    this.groups = new Map();     // groupId  -> group
+    this.groups = new Map();     // groupId  -> group (agent roles)
+    this.channelGroups = new Map(); // channelGroupId -> category
     this.messages = [];          // resident window, ascending by seq
     this.waiters = new Set();    // pending long-polls
 
@@ -89,6 +90,7 @@ class Hub extends EventEmitter {
     this.nextAgentNum = 1;
     this.nextChannelNum = 1;
     this.nextGroupNum = 1;
+    this.nextChannelGroupNum = 1;
 
     this.defaultChannelName = DEFAULT_CHANNEL;
 
@@ -113,10 +115,12 @@ class Hub extends EventEmitter {
       this.nextAgentNum = state.nextAgentNum || 1;
       this.nextChannelNum = state.nextChannelNum || 1;
       this.nextGroupNum = state.nextGroupNum || 1;
+      this.nextChannelGroupNum = state.nextChannelGroupNum || 1;
       this.settings = { ...this.settings, ...(state.settings || {}) };
       for (const agent of state.agents || []) this._restoreAgent(agent);
       for (const channel of state.channels || []) this._restoreChannel(channel);
       for (const group of state.groups || []) this.groups.set(group.id, group);
+      for (const group of state.channelGroups || []) this.channelGroups.set(group.id, group);
       this.taskBoard.restore(state.tasks);
       this.files.restore(state.files);
     }
@@ -189,6 +193,7 @@ class Hub extends EventEmitter {
       nextAgentNum: this.nextAgentNum,
       nextChannelNum: this.nextChannelNum,
       nextGroupNum: this.nextGroupNum,
+      nextChannelGroupNum: this.nextChannelGroupNum,
       settings: this.settings,
       agents: Array.from(this.agents.values()).map((a) => ({
         ...a,
@@ -201,6 +206,7 @@ class Hub extends EventEmitter {
         members: Array.from(c.members),
       })),
       groups: Array.from(this.groups.values()),
+      channelGroups: Array.from(this.channelGroups.values()),
       tasks: this.taskBoard.serialize(),
       files: this.files.serialize(),
     });
@@ -506,18 +512,33 @@ class Hub extends EventEmitter {
    *
    * The human runs the hub and is not gated by any of it.
    */
-  can(agentId, permission) {
+  can(agentId, permission, { channelId = null } = {}) {
     const agent = this.agents.get(agentId);
     if (!agent) return false;
     if (agent.kind === 'human') return true;
 
     if (permission === 'autoApproveTasks' && this.settings.autoApproveTasks) return true;
 
+    // A channel group can grant file-write across its channels to named agent
+    // groups. This is the join between the two axes, and like every other
+    // permission here it only ever adds: a category grant cannot take away
+    // something a role already carried, and vice versa.
+    if (permission === 'writeChannelFiles' && channelId && this._categoryGrantsWrite(agent, channelId)) {
+      return true;
+    }
+
     if (agent.groupIds.size === 0) return DEFAULT_GROUP_PERMISSIONS[permission] === true;
 
     return Array.from(agent.groupIds).some(
       (groupId) => this.groups.get(groupId)?.permissions?.[permission] === true
     );
+  }
+
+  _categoryGrantsWrite(agent, channelId) {
+    const channel = this.channels.get(channelId) || this.getChannel(channelId);
+    const group = channel && this.channelGroups.get(channel.channelGroupId);
+    if (!group || !group.writeGroupIds?.length) return false;
+    return group.writeGroupIds.some((agentGroupId) => agent.groupIds.has(agentGroupId));
   }
 
   /** Whether work raised by this agent skips the approval queue. */
@@ -529,8 +550,8 @@ class Hub extends EventEmitter {
    * Raise a permission failure that names the capability rather than just
    * refusing, so an agent can tell its human what to grant.
    */
-  requirePermission(agentId, permission, action) {
-    if (this.can(agentId, permission)) return;
+  requirePermission(agentId, permission, action, scope = {}) {
+    if (this.can(agentId, permission, scope)) return;
     throw new Error(
       `you do not have permission to ${action}. Ask the human to grant "${permission}" ` +
         `to one of your groups in the console.`
@@ -560,6 +581,164 @@ class Hub extends EventEmitter {
     const group = this.groups.get(groupId);
     if (!group) throw new Error(`no group with id ${groupId}`);
     return group;
+  }
+
+  // ============================================
+  // Channel groups
+  // ============================================
+
+  /**
+   * Channel groups — categories that channels sit inside and inherit from.
+   *
+   * Two products solve this differently and only one of them is relevant here.
+   * Slack sections are a *personal* sidebar arrangement: per-user, carrying no
+   * permissions, invisible to everyone else. With one human at one console that
+   * solves nothing. Discord categories are *structural*: everyone sees the same
+   * ones, and channels inside inherit the category's settings.
+   *
+   * So this follows Discord, including the part of its design worth copying —
+   * a channel is either **synced** with its group or it is not. Override
+   * something on the channel and it stops tracking the group; a resync pulls it
+   * back. That makes drift visible instead of silent, which is the whole
+   * problem with inheritance that only flows one way.
+   *
+   * What a group carries is what is actually worth setting once for a set of
+   * channels: the brief every agent reads, and which agent groups may write
+   * files in them. That second one is the join between the two axes — agent
+   * groups answer "what may this agent do", channel groups answer "what are the
+   * rules in this room", and the grant is the intersection.
+   */
+  createChannelGroup({ name, brief = '' } = {}) {
+    const label = String(name || '').trim().slice(0, 48) || `Group ${this.nextChannelGroupNum}`;
+    const existing = Array.from(this.channelGroups.values()).find(
+      (group) => group.name.toLowerCase() === label.toLowerCase()
+    );
+    if (existing) return existing;
+
+    const group = {
+      id: `cgrp_${this.nextChannelGroupNum++}`,
+      name: label,
+      brief: String(brief || '').slice(0, LIMITS.maxBriefLength),
+      // Agent groups whose members may write files in channels here. Additive,
+      // like every other permission in the hub: this grants, never revokes.
+      writeGroupIds: [],
+      order: this.channelGroups.size,
+      createdAt: Date.now(),
+    };
+
+    this.channelGroups.set(group.id, group);
+    this._persist();
+    this.emit('channelGroups:changed', this.listChannelGroups());
+    return group;
+  }
+
+  updateChannelGroup(groupId, { name, brief } = {}) {
+    const group = this.channelGroups.get(groupId);
+    if (!group) throw new Error(`unknown channel group: ${groupId}`);
+
+    if (typeof name === 'string' && name.trim()) group.name = name.trim().slice(0, 48);
+    if (typeof brief === 'string') group.brief = brief.slice(0, LIMITS.maxBriefLength);
+
+    this._persist();
+    this.emit('channelGroups:changed', this.listChannelGroups());
+    // Synced channels just changed meaning, so the console has to redraw them.
+    for (const channel of this.channels.values()) {
+      if (channel.channelGroupId === groupId) {
+        this.emit('channel:updated', this.publicChannel(channel));
+      }
+    }
+    return group;
+  }
+
+  /** Grant or revoke file-write for an agent group across this category. */
+  setChannelGroupWriteAccess(groupId, agentGroupId, allowed) {
+    const group = this.channelGroups.get(groupId);
+    if (!group) throw new Error(`unknown channel group: ${groupId}`);
+
+    const held = new Set(group.writeGroupIds || []);
+    if (allowed) held.add(agentGroupId);
+    else held.delete(agentGroupId);
+    group.writeGroupIds = Array.from(held);
+
+    this._persist();
+    this.emit('channelGroups:changed', this.listChannelGroups());
+    return group;
+  }
+
+  /** Removing a group leaves its channels intact and ungrouped. */
+  deleteChannelGroup(groupId) {
+    if (!this.channelGroups.has(groupId)) return false;
+
+    for (const channel of this.channels.values()) {
+      if (channel.channelGroupId !== groupId) continue;
+      // Keep whatever the channel was showing, so deleting a category never
+      // silently changes what agents in those channels are being told.
+      channel.brief = this.effectiveBrief(channel);
+      channel.channelGroupId = null;
+      channel.briefSynced = false;
+      this.emit('channel:updated', this.publicChannel(channel));
+    }
+
+    this.channelGroups.delete(groupId);
+    this._persist();
+    this.emit('channelGroups:changed', this.listChannelGroups());
+    return true;
+  }
+
+  /** Move a channel into a group, or out of one with a null group. */
+  setChannelGroup(channelReference, groupId) {
+    const channel = this.getChannel(channelReference);
+    if (!channel) throw new Error(`unknown channel: ${channelReference}`);
+    if (groupId && !this.channelGroups.has(groupId)) {
+      throw new Error(`unknown channel group: ${groupId}`);
+    }
+
+    channel.channelGroupId = groupId || null;
+    // Joining a group means adopting its settings — the Discord behaviour, and
+    // the only one that makes a category worth creating.
+    if (groupId) channel.briefSynced = true;
+
+    this._persist();
+    this.emit('channel:updated', this.publicChannel(channel));
+    return channel;
+  }
+
+  /** Pull a drifted channel back onto its group's settings. */
+  resyncChannel(channelReference) {
+    const channel = this.getChannel(channelReference);
+    if (!channel) throw new Error(`unknown channel: ${channelReference}`);
+    if (!channel.channelGroupId) throw new Error(`#${channel.name} is not in a channel group`);
+
+    channel.briefSynced = true;
+    this._persist();
+    this.emit('channel:updated', this.publicChannel(channel));
+    return channel;
+  }
+
+  /**
+   * What agents in this channel are actually told.
+   *
+   * A synced channel in a group whose brief is set reads the group's. Anything
+   * else falls back to the channel's own, which is what an override writes to.
+   */
+  effectiveBrief(channel) {
+    if (channel.channelGroupId && channel.briefSynced !== false) {
+      const group = this.channelGroups.get(channel.channelGroupId);
+      if (group && group.brief) return group.brief;
+    }
+    return channel.brief || '';
+  }
+
+  listChannelGroups() {
+    return Array.from(this.channelGroups.values())
+      .sort((a, b) => a.order - b.order || a.createdAt - b.createdAt)
+      .map((group) => ({
+        ...group,
+        writeGroupIds: Array.from(group.writeGroupIds || []),
+        channels: Array.from(this.channels.values())
+          .filter((channel) => channel.channelGroupId === group.id && !channel.isDm)
+          .map((channel) => channel.name),
+      }));
   }
 
   // ============================================
@@ -654,7 +833,12 @@ class Hub extends EventEmitter {
       id: channel.id,
       name: channel.name,
       topic: channel.topic,
-      brief: channel.brief || '',
+      // What agents actually read, after inheritance. `ownBrief` is what an
+      // override would edit, which the console needs to show the two apart.
+      brief: this.effectiveBrief(channel),
+      ownBrief: channel.brief || '',
+      channelGroupId: channel.channelGroupId || null,
+      briefSynced: channel.briefSynced !== false,
       isDm: channel.isDm,
       createdAt: channel.createdAt,
       members: Array.from(channel.members)
@@ -758,6 +942,10 @@ class Hub extends EventEmitter {
     const channel = this.getChannel(channelReference);
     if (!channel) throw new Error(`unknown channel: ${channelReference}`);
     channel.brief = String(brief || '').slice(0, LIMITS.maxBriefLength || 2000);
+    // Writing a brief on the channel is an override, so it stops tracking its
+    // group. Drift has to be visible; silent divergence is the failure mode
+    // one-way inheritance always has.
+    if (channel.channelGroupId) channel.briefSynced = false;
     this._persist();
     this.emit('channel:updated', this.publicChannel(channel));
     return channel;

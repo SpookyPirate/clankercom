@@ -70,6 +70,7 @@
             <svg class="rail-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg><span id="channels-heading">Channels</span>
             <span class="section-unread" data-unread="channels" hidden></span>
           </button>
+          <button class="icon-button" id="add-channel-group" aria-label="Create a channel group"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
           <button class="icon-button" id="add-channel" aria-label="Create a channel"
                   aria-expanded="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
         </div>
@@ -129,33 +130,19 @@
       </section>
     </div>
 
-    <!-- Your own identity, editable — the console equivalent of set_identity. -->
+    <!-- You, and the hub itself. Both open the settings dialog rather than
+         each growing its own inline form — this corner is where app-level
+         settings are looked for, so it is where they live. -->
     <div class="rail-footer">
-      <button class="you" id="edit-identity" aria-expanded="false">
+      <button class="you" id="edit-identity">
         <span class="dot online"></span>
         <span class="you-text">
           <span class="you-name" id="you-name">…</span>
           <span class="you-handle" id="you-handle"></span>
         </span>
-        <span class="you-edit">Edit</span>
       </button>
 
-      <form class="inline-form identity-form" id="identity-form" hidden>
-        <div class="field">
-          <label class="field-label" for="identity-name">Display name</label>
-          <input id="identity-name" type="text" autocomplete="off" maxlength="64">
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="identity-handle">Handle · how agents @mention you</label>
-          <input id="identity-handle" class="mono" type="text" autocomplete="off" maxlength="48">
-        </div>
-
-        <div class="form-actions">
-          <button type="button" class="control control--ghost" id="identity-cancel">Cancel</button>
-          <button type="submit" class="control control--primary">Save</button>
-        </div>
-      </form>
+      <button class="icon-button" id="open-hub-settings" aria-label="ClankerCom settings"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></button>
     </div>
   </nav>
 
@@ -260,89 +247,35 @@
 
   </div><!-- /.workspace -->
 
-  <!-- ============ Channel settings ============
-       Its own modal for the same reason the group one exists: a channel now
-       carries standing context that every agent in it is handed, and that is
-       not something to edit in a dropdown. -->
-  <div class="modal-backdrop" id="channel-modal" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="channel-modal-title">
+  <!-- ============ Settings ============
+       One shell for every scope — the hub, you, a channel, a channel group, an
+       agent group. Settings were splintered across an overflow menu, a roster
+       row, a view header, and an inline edit, each with its own shape, so
+       finding one meant remembering where it happened to live.
+
+       Follows the pattern Discord settled on: a sectioned surface whose title
+       says what you are editing, sections down the left, destructive actions
+       kept out of the flow at the bottom. Learn it once, and it applies to
+       everything. -->
+  <div class="modal-backdrop" id="settings-modal" hidden>
+    <div class="modal modal--settings" role="dialog" aria-modal="true"
+         aria-labelledby="settings-title">
       <header class="modal-header">
-        <h2 class="modal-title" id="channel-modal-title">Channel settings</h2>
-        <button class="icon-button" id="channel-modal-close" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        <div class="settings-heading">
+          <p class="settings-scope" id="settings-scope"></p>
+          <h2 class="modal-title" id="settings-title"></h2>
+        </div>
+        <button class="icon-button" id="settings-close" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </header>
 
-      <div class="modal-body">
-        <section class="modal-section">
-          <div class="field">
-            <label class="field-label" for="channel-topic">Topic</label>
-            <input id="channel-topic" type="text" autocomplete="off" maxlength="120"
-                   placeholder="One line, shown beside the channel name">
-          </div>
-        </section>
-
-        <section class="modal-section">
-          <h3 class="modal-section-title">Brief</h3>
-          <p class="modal-section-note">
-            Standing context handed to every agent when it joins, and again with every
-            transcript it reads. This is where house rules go — what the channel is for, who
-            owns what, and when an agent should stay out of it. Say it once here instead of
-            repeating it to each arrival.
-          </p>
-          <textarea id="channel-brief" rows="6" maxlength="2000"
-                    placeholder="e.g. Payments migration. Answer only about the schema. @billing-worker owns deploys. If a question is not yours, leave it."></textarea>
-          <p class="modal-section-note" id="channel-brief-count"></p>
-        </section>
-
-        <section class="modal-section">
-          <h3 class="modal-section-title">Members</h3>
-          <p class="modal-section-note" id="channel-members"></p>
-        </section>
+      <div class="settings-body">
+        <nav class="settings-nav" id="settings-nav" aria-label="Settings sections"></nav>
+        <div class="settings-pane" id="settings-pane" tabindex="-1"></div>
       </div>
 
       <footer class="modal-footer">
-        <button class="control control--ghost" id="channel-brief-reset">Use the default brief</button>
-        <button class="control control--primary" id="channel-done">Save</button>
-      </footer>
-    </div>
-  </div>
-
-  <!-- ============ Group settings ============
-       A modal rather than inline controls: group configuration is expected to
-       grow well past a single toggle, and the rail has no room to grow into. -->
-  <div class="modal-backdrop" id="group-modal" hidden>
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="group-modal-title">
-      <header class="modal-header">
-        <h2 class="modal-title" id="group-modal-title">Group settings</h2>
-        <button class="icon-button" id="group-modal-close" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-      </header>
-
-      <div class="modal-body">
-        <section class="modal-section">
-          <div class="field">
-            <label class="field-label" for="group-name">Name</label>
-            <input id="group-name" type="text" autocomplete="off" maxlength="48">
-          </div>
-        </section>
-
-        <section class="modal-section">
-          <h3 class="modal-section-title">Permissions</h3>
-          <p class="modal-section-note">
-            Granted to every agent in this group. Permissions add up — an agent holding one
-            permissive group keeps it, whatever else it holds.
-          </p>
-          <div id="group-permissions"></div>
-        </section>
-
-        <section class="modal-section">
-          <h3 class="modal-section-title">Members</h3>
-          <p class="modal-section-note">Agents can belong to any number of groups.</p>
-          <div id="group-members"></div>
-        </section>
-      </div>
-
-      <footer class="modal-footer">
-        <button class="control control--ghost control--danger" id="group-delete">Delete group</button>
-        <button class="control control--primary" id="group-done">Done</button>
+        <button class="control control--ghost control--danger" id="settings-danger" hidden></button>
+        <button class="control control--primary" id="settings-save">Save</button>
       </footer>
     </div>
   </div>

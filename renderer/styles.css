@@ -791,9 +791,20 @@ button {
    Placed where an account control conventionally lives, so it reads as
    "you" rather than as another roster entry. */
 
+/* You and the hub gear share one row: the identity is the context, the gear is
+   the action taken on this corner of the app. Stacked, the gear read as an
+   orphaned control belonging to nothing. */
 .rail-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
   border-top: 1px solid var(--line);
   padding: var(--s2) var(--s2) var(--s3);
+}
+
+.rail-footer .you {
+  flex: 1;
+  min-width: 0;
 }
 
 .you {
@@ -2386,4 +2397,162 @@ button {
 
 .modal-section textarea::placeholder {
   color: var(--ink-ghost);
+}
+
+/* ============================================
+   Settings shell
+   ============================================
+   One sectioned surface serving every scope — the hub, you, a channel, a
+   channel group, an agent group. Settings used to be splintered across an
+   overflow menu, a roster row, a view header, and an inline edit, each with its
+   own shape; finding one meant remembering where it happened to live. A single
+   learnable structure is worth more than any per-screen cleverness. */
+
+.modal--settings {
+  max-width: 840px;
+  /* Fixed height, so switching sections never resizes the dialog under the
+     pointer — a modal that jumps as you navigate it feels broken. */
+  height: min(620px, 100%);
+}
+
+.settings-heading {
+  min-width: 0;
+}
+
+/* The scope line answers "what am I editing" before the name does, which is the
+   question every splintered settings screen leaves you asking. */
+.settings-scope {
+  margin: 0 0 2px;
+  font-family: var(--font-ui-small);
+  font-size: var(--t-meta);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.settings-nav {
+  flex: 0 0 196px;
+  padding: var(--s3);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  min-height: var(--target-min);
+  padding: var(--s2) var(--s3);
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--ink-dim);
+  font-family: inherit;
+  font-size: var(--t-ui);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--t-micro-ms) var(--ease), color var(--t-micro-ms) var(--ease);
+}
+
+.settings-nav-item:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+
+.settings-nav-item:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: -2px;
+}
+
+.settings-nav-item.is-active {
+  background: var(--state-active);
+  color: var(--ink);
+}
+
+.settings-pane {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+}
+
+.settings-pane:focus {
+  outline: none;
+}
+
+/* A settings pane is a reading surface as much as a form, so its explanatory
+   copy gets a measure rather than running the full width. */
+.settings-pane .modal-section-note {
+  max-width: 62ch;
+}
+
+/* Below tablet the two columns cannot both hold; the nav becomes a scrolling
+   strip above the pane rather than squeezing to unusable width. A fixed-height
+   dialog also has to give up its height here. */
+@media (max-width: 720px) {
+  .modal--settings {
+    height: 100%;
+  }
+
+  .settings-body {
+    flex-direction: column;
+  }
+
+  .settings-nav {
+    flex: 0 0 auto;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .settings-nav-item {
+    flex: 0 0 auto;
+  }
+}
+
+/* A channel group heading: quieter than the section heading above it, so the
+   hierarchy reads rail section > group > channel without another box. */
+.channel-category {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3) var(--s2) var(--s1);
+  font-family: var(--font-ui-small);
+  font-size: var(--t-meta);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.channel-category-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The gear only on hover or focus, so a rail of groups is not a wall of icons. */
+.channel-category .icon-button {
+  opacity: 0;
+  transition: opacity var(--t-micro-ms) var(--ease);
+}
+
+.channel-category:hover .icon-button,
+.channel-category .icon-button:focus-visible {
+  opacity: 1;
 }

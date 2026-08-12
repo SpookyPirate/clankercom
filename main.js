@@ -119,6 +119,7 @@ function forwardHubEvents() {
   hub.on('channel:created', (channel) => send('hub:channel', channel));
   hub.on('channel:updated', (channel) => send('hub:channel', channel));
   hub.on('group:changed', (groups) => send('hub:groups', groups));
+  hub.on('channelGroups:changed', (groups) => send('hub:channelGroups', groups));
   hub.on('task:changed', (task) => send('hub:task', task));
   hub.on('settings:changed', (settings) => send('hub:settings', settings));
   hub.on('files:changed', (scope) => send('hub:files', scope));
@@ -273,6 +274,17 @@ function createWindow() {
   // Dev aid for UI work: CLANKER_SCREENSHOT=<path> captures the rendered
   // window once and exits, so layout changes can be verified without a
   // manual screenshot round-trip.
+  // CLANKER_SCREENSHOT_SIZE=1024x768 renders at a given viewport, which is the
+  // only way to check that a layout holds at the widths it claims to. The
+  // minimum size has to be dropped first or the request is silently clamped —
+  // and a clamped resize returns a pass for a viewport never actually tested.
+  const requestedSize = /^(\d+)x(\d+)$/.exec(process.env.CLANKER_SCREENSHOT_SIZE || '');
+  if (requestedSize) {
+    const [, width, height] = requestedSize.map(Number);
+    mainWindow.setMinimumSize(1, 1);
+    mainWindow.setContentSize(width, height);
+  }
+
   if (process.env.CLANKER_SCREENSHOT) captureAndExit(process.env.CLANKER_SCREENSHOT);
 
   // External links belong in the real browser, not in a hub pane.
@@ -390,6 +402,7 @@ ipcMain.handle('hub:bootstrap', async () => ({
   agents: hub.listAgents(),
   channels: hub.listChannels(humanAgent.id),
   groups: hub.listGroups(),
+  channelGroups: hub.listChannelGroups(),
   tasks: hub.taskBoard.list().map((task) => hub.taskBoard.publicTask(task)),
   settings: hub.settings,
   peers: peers.list(),
@@ -433,6 +446,33 @@ ipcMain.handle('hub:updateChannel', async (_event, { channel, topic, brief }) =>
   if (typeof brief === 'string') hub.setChannelBrief(target.id, brief);
   else hub.persist();
   return hub.publicChannel(target);
+});
+
+// ---- Channel groups (categories) ----
+// Human-owned structure, so these are console-only rather than MCP tools:
+// agents read the effect through their channel's brief and permissions.
+ipcMain.handle('hub:channelGroups', async () => hub.listChannelGroups());
+
+ipcMain.handle('hub:createChannelGroup', async (_event, { name }) => {
+  return hub.createChannelGroup({ name });
+});
+
+ipcMain.handle('hub:updateChannelGroup', async (_event, { id, name, brief }) => {
+  return hub.updateChannelGroup(id, { name, brief });
+});
+
+ipcMain.handle('hub:deleteChannelGroup', async (_event, { id }) => hub.deleteChannelGroup(id));
+
+ipcMain.handle('hub:setChannelGroupWrite', async (_event, { id, agentGroupId, allowed }) => {
+  return hub.setChannelGroupWriteAccess(id, agentGroupId, allowed);
+});
+
+ipcMain.handle('hub:setChannelGroup', async (_event, { channel, groupId }) => {
+  return hub.publicChannel(hub.setChannelGroup(channel, groupId));
+});
+
+ipcMain.handle('hub:resyncChannel', async (_event, { channel }) => {
+  return hub.publicChannel(hub.resyncChannel(channel));
 });
 
 // Your own name, changeable from the console the same way an agent changes

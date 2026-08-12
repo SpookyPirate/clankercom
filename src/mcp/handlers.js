@@ -92,7 +92,9 @@ function roomContext(hub, viewer, messages) {
     .map((agent) => `@${agent.handle}${agent.kind === 'human' ? ' (human)' : ''}`);
 
   const lines = [];
-  if (channel.brief) lines.push(`Channel brief: ${channel.brief}`);
+  // The effective brief: a channel synced to its group reads the group's.
+  const brief = hub.effectiveBrief(channel);
+  if (brief) lines.push(`Channel brief: ${brief}`);
   lines.push(
     others.length
       ? `Also here: ${others.join(', ')} — they receive these messages too, so a reply from you may be redundant.`
@@ -431,7 +433,7 @@ const handlers = {
     return asText(
       [
         `Joined #${channel.name}. ${channel.members.size} member(s).`,
-        channel.brief ? `\nChannel brief: ${channel.brief}` : '',
+        hub.effectiveBrief(channel) ? `\nChannel brief: ${hub.effectiveBrief(channel)}` : '',
         others.length
           ? `\nAlso here: ${others.join(', ')}. They receive the same messages you do, so ` +
             `not every message is yours to answer.`
@@ -448,10 +450,17 @@ const handlers = {
     const channel = requireChannel(hub, args.channel);
     hub.setChannelBrief(channel.id, args.brief);
 
+    // Overriding on the channel stops it tracking its group, and saying so is
+    // the difference between inheritance you can reason about and drift.
+    const detached =
+      channel.channelGroupId && !channel.briefSynced
+        ? `\n\nThis overrides its channel group, so #${channel.name} no longer follows it.`
+        : '';
+
     return asText(
       channel.brief
-        ? `Brief set for #${channel.name}. Every agent joining or reading it now gets:\n${channel.brief}`
-        : `Brief cleared for #${channel.name}.`
+        ? `Brief set for #${channel.name}. Every agent joining or reading it now gets:\n${channel.brief}${detached}`
+        : `Brief cleared for #${channel.name}.${detached}`
     );
   },
 
@@ -707,7 +716,7 @@ const handlers = {
     const agent = ensureIdentity(context);
     const { scope, channelId, label } = resolveFileScope(hub, agent, args);
 
-    hub.requirePermission(agent.id, permissionFor(scope, 'write'), `add files to ${label}`);
+    hub.requirePermission(agent.id, permissionFor(scope, 'write'), `add files to ${label}`, { channelId });
 
     const file = hub.files.write(scope, channelId, {
       name: args.name,
@@ -723,7 +732,7 @@ const handlers = {
     const agent = ensureIdentity(context);
     const { scope, channelId, label } = resolveFileScope(hub, agent, args);
 
-    hub.requirePermission(agent.id, permissionFor(scope, 'write'), `delete files from ${label}`);
+    hub.requirePermission(agent.id, permissionFor(scope, 'write'), `delete files from ${label}`, { channelId });
 
     const name = hub.files.remove(scope, channelId, args.name);
     return asText(`Deleted ${name} from ${label}.`);

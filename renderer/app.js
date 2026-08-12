@@ -23,7 +23,7 @@ const state = {
   defaultChannel: null,
   port: null,
   view: 'channel',     // 'channel' | 'tasks'
-  editingGroupId: null,
+  channelGroups: [],   // categories channels sit inside
   groups: [],
   tasks: [],
   settings: { autoApproveTasks: false },
@@ -63,10 +63,6 @@ const el = {
   newChannelName: document.getElementById('new-channel-name'),
   newChannelCancel: document.getElementById('new-channel-cancel'),
   editIdentity: document.getElementById('edit-identity'),
-  identityForm: document.getElementById('identity-form'),
-  identityName: document.getElementById('identity-name'),
-  identityHandle: document.getElementById('identity-handle'),
-  identityCancel: document.getElementById('identity-cancel'),
   youName: document.getElementById('you-name'),
   youHandle: document.getElementById('you-handle'),
   openTasks: document.getElementById('open-tasks'),
@@ -80,14 +76,6 @@ const el = {
   newGroupName: document.getElementById('new-group-name'),
   newGroupCancel: document.getElementById('new-group-cancel'),
   peerRemove: document.getElementById('peer-remove'),
-  groupModal: document.getElementById('group-modal'),
-  groupModalTitle: document.getElementById('group-modal-title'),
-  groupModalClose: document.getElementById('group-modal-close'),
-  groupName: document.getElementById('group-name'),
-  groupPermissions: document.getElementById('group-permissions'),
-  groupMembers: document.getElementById('group-members'),
-  groupDelete: document.getElementById('group-delete'),
-  groupDone: document.getElementById('group-done'),
   winMinimize: document.getElementById('win-minimize'),
   winMaximize: document.getElementById('win-maximize'),
   winMaximizeIcon: document.getElementById('win-maximize-icon'),
@@ -108,15 +96,16 @@ const el = {
   channelMenuButton: document.getElementById('channel-menu-button'),
   channelMenu: document.getElementById('channel-menu'),
   actionSettings: document.getElementById('action-settings'),
-  channelModal: document.getElementById('channel-modal'),
-  channelModalTitle: document.getElementById('channel-modal-title'),
-  channelModalClose: document.getElementById('channel-modal-close'),
-  channelTopic: document.getElementById('channel-topic'),
-  channelBrief: document.getElementById('channel-brief'),
-  channelBriefCount: document.getElementById('channel-brief-count'),
-  channelBriefReset: document.getElementById('channel-brief-reset'),
-  channelMembers: document.getElementById('channel-members'),
-  channelDone: document.getElementById('channel-done'),
+  settingsModal: document.getElementById('settings-modal'),
+  settingsScope: document.getElementById('settings-scope'),
+  settingsTitle: document.getElementById('settings-title'),
+  settingsClose: document.getElementById('settings-close'),
+  settingsNav: document.getElementById('settings-nav'),
+  settingsPane: document.getElementById('settings-pane'),
+  settingsDanger: document.getElementById('settings-danger'),
+  settingsSave: document.getElementById('settings-save'),
+  openHubSettings: document.getElementById('open-hub-settings'),
+  addChannelGroup: document.getElementById('add-channel-group'),
   actionExport: document.getElementById('action-export'),
   actionClear: document.getElementById('action-clear'),
   confirmModal: document.getElementById('confirm-modal'),
@@ -298,7 +287,7 @@ function renderRail() {
   // is dropped from the rail. Its messages remain in the transcript log.
   const directMessages = channels.filter((c) => c.isDm && dmCounterpart(c));
 
-  renderChannelGroup(el.channelList, channels.filter((c) => !c.isDm));
+  renderChannelTree(el.channelList, channels.filter((c) => !c.isDm));
   renderChannelGroup(el.dmList, directMessages);
   renderRoster();
   renderTaskBadge();
@@ -324,6 +313,53 @@ function renderSectionUnread() {
     const show = count > 0 && state.collapsed.has(key);
     badge.hidden = !show;
     badge.textContent = count > 99 ? '99+' : String(count);
+  }
+}
+
+/**
+ * Channels, under the groups they belong to.
+ *
+ * Ungrouped channels come **first**, before any heading. Putting them last left
+ * them sitting flush under the final group with nothing to separate them, so
+ * they read as belonging to it. Leading with them means a heading always starts
+ * a group and everything above the first heading is plainly outside one — no
+ * "Ungrouped" label needed, which is good, because it would name a container
+ * that does not exist.
+ */
+function renderChannelTree(container, channels) {
+  container.innerHTML = '';
+
+  const categories = state.channelGroups || [];
+  const groupedIds = new Set(
+    channels.filter((c) => categories.some((g) => g.id === c.channelGroupId)).map((c) => c.id)
+  );
+
+  const loose = document.createElement('div');
+  renderChannelGroup(loose, channels.filter((channel) => !groupedIds.has(channel.id)));
+  container.appendChild(loose);
+
+  for (const category of categories) {
+    const members = channels.filter((channel) => channel.channelGroupId === category.id);
+
+    const heading = document.createElement('div');
+    heading.className = 'channel-category';
+
+    const label = document.createElement('span');
+    label.className = 'channel-category-name';
+    label.textContent = category.name;
+
+    const settings = document.createElement('button');
+    settings.className = 'icon-button';
+    settings.innerHTML = icon('settings');
+    settings.setAttribute('aria-label', `${category.name} settings`);
+    settings.onclick = () => openSettings('channelGroup', category.id);
+
+    heading.append(label, settings);
+    container.appendChild(heading);
+
+    const body = document.createElement('div');
+    renderChannelGroup(body, members);
+    container.appendChild(body);
   }
 }
 
@@ -413,7 +449,7 @@ function renderGroupHeading(group, memberCount) {
   settings.className = 'icon-button';
   settings.innerHTML = icon('settings');
   settings.setAttribute('aria-label', `${group.name} settings`);
-  settings.onclick = () => openGroupModal(group.id);
+  settings.onclick = () => openSettings('agentGroup', group.id);
 
   const right = document.createElement('span');
   right.style.display = 'flex';
@@ -1377,68 +1413,24 @@ document.addEventListener('click', (event) => {
   }
 });
 
-// ============================================
-// Channel settings
-// ============================================
-
-/**
- * A channel's brief is the one setting agents actually read, so it gets room to
- * be written properly rather than a line in a dropdown.
- */
-function openChannelModal(channelName) {
-  const channel = state.channels.get(channelName);
-  if (!channel) return;
-
-  el.channelModalTitle.textContent = `#${channel.name}`;
-  el.channelTopic.value = channel.topic || '';
-  el.channelBrief.value = channel.brief || '';
-
-  const members = (channel.members || []).map((handle) => '@' + handle);
-  el.channelMembers.textContent = members.length
-    ? `${members.length} here: ${members.join(', ')}. Every one of them receives every message.`
-    : 'Nobody is in this channel yet.';
-
-  renderBriefCount();
-  el.channelModal.hidden = false;
-  el.channelBrief.focus();
-}
-
-function renderBriefCount() {
-  const used = el.channelBrief.value.length;
-  el.channelBriefCount.textContent = used
-    ? `${used} of 2000 characters. Every agent reads this on arrival, so shorter is kinder.`
-    : 'Empty — agents get no standing context for this channel.';
-}
-
-async function saveChannelSettings() {
-  const channel = el.channelModalTitle.textContent.replace(/^#/, '');
-  try {
-    await window.clanker.updateChannel(channel, {
-      topic: el.channelTopic.value.trim(),
-      brief: el.channelBrief.value.trim(),
-    });
-    el.channelModal.hidden = true;
-    toast(`Saved #${channel}.`, 'ok');
-  } catch (error) {
-    toast(`Could not save: ${error.message}`);
-  }
-}
-
 el.actionSettings.onclick = () => {
   toggleChannelMenu(false);
-  openChannelModal(state.activeChannel);
+  openSettings('channel', state.activeChannel);
 };
 
-el.channelModalClose.onclick = () => (el.channelModal.hidden = true);
-el.channelDone.onclick = saveChannelSettings;
-el.channelBrief.addEventListener('input', renderBriefCount);
-el.channelBriefReset.onclick = () => {
-  el.channelBrief.value = state.defaultBrief || '';
-  renderBriefCount();
-  el.channelBrief.focus();
-};
-el.channelModal.onclick = (event) => {
-  if (event.target === el.channelModal) el.channelModal.hidden = true;
+// The hub gear sits beside your name, where an app-level setting is looked
+// for — the same place Discord and Slack put it.
+el.openHubSettings.onclick = () => openSettings('hub');
+
+// Created empty and named in its own settings, so there is one place a group
+// is configured rather than a create form that diverges from the edit form.
+el.addChannelGroup.onclick = async () => {
+  try {
+    const group = await window.clanker.createChannelGroup('New group');
+    openSettings('channelGroup', group.id);
+  } catch (error) {
+    toast(error.message);
+  }
 };
 
 el.actionExport.onclick = async () => {
@@ -1477,6 +1469,581 @@ el.actionClear.onclick = async () => {
 // ============================================
 
 /**
+ * One settings surface, scoped by what you opened it on.
+ *
+ * Each scope declares a title, its sections, and an optional destructive
+ * action. Sections render into a shared pane, so adding a scope is a data
+ * change rather than another dialog with its own habits — which is exactly how
+ * settings ended up splintered across an overflow menu, a roster row, a view
+ * header, and an inline edit in the first place.
+ */
+let activeScope = null;
+
+const SETTINGS_SCOPES = {
+  hub: () => ({
+    scope: 'Hub',
+    title: 'ClankerCom',
+    sections: [
+      { key: 'general', label: 'General', render: renderHubGeneral },
+      { key: 'defaults', label: 'Defaults', render: renderHubDefaults },
+      { key: 'connection', label: 'Connection', render: renderHubConnection },
+    ],
+  }),
+
+  you: () => ({
+    scope: 'You',
+    title: state.self?.displayName || 'You',
+    sections: [{ key: 'identity', label: 'Identity', render: renderYourIdentity }],
+  }),
+
+  channel: (name) => {
+    const channel = state.channels.get(name);
+    if (!channel) return null;
+    return {
+      scope: 'Channel',
+      title: '#' + channel.name,
+      sections: [
+        { key: 'overview', label: 'Overview', render: (pane) => renderChannelOverview(pane, channel) },
+        { key: 'brief', label: 'Brief', render: (pane) => renderChannelBrief(pane, channel) },
+        { key: 'members', label: 'Members', render: (pane) => renderChannelMembers(pane, channel) },
+      ],
+    };
+  },
+
+  channelGroup: (id) => {
+    const group = (state.channelGroups || []).find((candidate) => candidate.id === id);
+    if (!group) return null;
+    return {
+      scope: 'Channel group',
+      title: group.name,
+      sections: [
+        { key: 'overview', label: 'Overview', render: (pane) => renderCategoryOverview(pane, group) },
+        { key: 'brief', label: 'Brief', render: (pane) => renderCategoryBrief(pane, group) },
+        { key: 'access', label: 'Access', render: (pane) => renderCategoryAccess(pane, group) },
+      ],
+      danger: {
+        label: 'Delete group',
+        run: async () => {
+          const sure = await confirmAction({
+            title: `Delete "${group.name}"?`,
+            body:
+              'The channels in it are kept and become ungrouped. Each keeps the brief it is ' +
+              'showing now, so nothing agents are being told changes.',
+            confirmLabel: 'Delete group',
+          });
+          if (!sure) return false;
+          await window.clanker.deleteChannelGroup(group.id);
+          return true;
+        },
+      },
+    };
+  },
+
+  agentGroup: (id) => {
+    const group = state.groups.find((candidate) => candidate.id === id);
+    if (!group) return null;
+    return {
+      scope: 'Agent group',
+      title: group.name,
+      sections: [
+        { key: 'overview', label: 'Overview', render: (pane) => renderAgentGroupOverview(pane, group) },
+        { key: 'permissions', label: 'Permissions', render: (pane) => renderGroupPermissions(pane, group) },
+        { key: 'members', label: 'Members', render: (pane) => renderGroupMembers(pane, group) },
+      ],
+      danger: {
+        label: 'Delete group',
+        run: async () => {
+          const sure = await confirmAction({
+            title: `Delete "${group.name}"?`,
+            body: 'Agents in it keep every permission granted by their other groups.',
+            confirmLabel: 'Delete group',
+          });
+          if (!sure) return false;
+          await window.clanker.deleteGroup(group.id);
+          return true;
+        },
+      },
+    };
+  },
+};
+
+function openSettings(scopeName, id, sectionKey) {
+  const build = SETTINGS_SCOPES[scopeName];
+  const model = build && build(id);
+  if (!model) return;
+
+  activeScope = { name: scopeName, id, model, section: sectionKey || model.sections[0].key };
+  el.settingsScope.textContent = model.scope;
+  el.settingsTitle.textContent = model.title;
+
+  el.settingsDanger.hidden = !model.danger;
+  if (model.danger) el.settingsDanger.textContent = model.danger.label;
+
+  renderSettingsNav();
+  renderSettingsPane();
+  el.settingsModal.hidden = false;
+}
+
+function closeSettings() {
+  activeScope = null;
+  el.settingsModal.hidden = true;
+}
+
+function renderSettingsNav() {
+  el.settingsNav.innerHTML = '';
+  for (const section of activeScope.model.sections) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'settings-nav-item' + (section.key === activeScope.section ? ' is-active' : '');
+    item.textContent = section.label;
+    item.setAttribute('aria-current', section.key === activeScope.section ? 'true' : 'false');
+    item.onclick = () => {
+      activeScope.section = section.key;
+      renderSettingsNav();
+      renderSettingsPane();
+    };
+    el.settingsNav.appendChild(item);
+  }
+  // A single-section scope needs no navigation; showing one tab is noise.
+  el.settingsNav.hidden = activeScope.model.sections.length < 2;
+}
+
+function renderSettingsPane() {
+  el.settingsPane.innerHTML = '';
+  const section = activeScope.model.sections.find((s) => s.key === activeScope.section);
+  section?.render(el.settingsPane);
+}
+
+/** Rebuild in place after hub state changes, so an open dialog never goes stale. */
+function refreshSettings() {
+  if (!activeScope) return;
+  const rebuilt = SETTINGS_SCOPES[activeScope.name]?.(activeScope.id);
+  if (!rebuilt) return closeSettings();
+  activeScope.model = rebuilt;
+  el.settingsTitle.textContent = rebuilt.title;
+  renderSettingsPane();
+}
+
+// ---- Pane building blocks ----
+
+function paneSection(pane, { title, note }) {
+  const section = document.createElement('section');
+  section.className = 'modal-section';
+  if (title) {
+    const heading = document.createElement('h3');
+    heading.className = 'modal-section-title';
+    heading.textContent = title;
+    section.appendChild(heading);
+  }
+  if (note) {
+    const paragraph = document.createElement('p');
+    paragraph.className = 'modal-section-note';
+    paragraph.textContent = note;
+    section.appendChild(paragraph);
+  }
+  pane.appendChild(section);
+  return section;
+}
+
+function paneField(parent, { label, value, mono, maxLength = 120, onCommit, placeholder }) {
+  const field = document.createElement('div');
+  field.className = 'field';
+
+  const id = 'set-' + Math.random().toString(36).slice(2, 9);
+  const labelEl = document.createElement('label');
+  labelEl.className = 'field-label';
+  labelEl.setAttribute('for', id);
+  labelEl.textContent = label;
+
+  const input = document.createElement('input');
+  input.id = id;
+  input.type = 'text';
+  input.autocomplete = 'off';
+  input.maxLength = maxLength;
+  input.value = value || '';
+  if (placeholder) input.placeholder = placeholder;
+  if (mono) input.className = 'mono';
+  input.addEventListener('change', () => onCommit(input.value.trim(), input));
+
+  field.append(labelEl, input);
+  parent.appendChild(field);
+  return input;
+}
+
+function paneTextarea(parent, { value, placeholder }) {
+  const area = document.createElement('textarea');
+  area.rows = 7;
+  area.maxLength = 2000;
+  area.value = value || '';
+  if (placeholder) area.placeholder = placeholder;
+
+  const count = document.createElement('p');
+  count.className = 'modal-section-note';
+
+  const paint = () => {
+    count.textContent = area.value.length
+      ? `${area.value.length} of 2000 characters. Every agent reads this on arrival, so shorter is kinder.`
+      : 'Empty — agents get no standing context here.';
+  };
+  area.addEventListener('input', paint);
+  paint();
+
+  parent.append(area, count);
+  return area;
+}
+
+function paneToggleRow(parent, { name, note, checked, onChange }) {
+  const row = document.createElement('label');
+  row.className = 'perm-row';
+  row.innerHTML =
+    '<span class="perm-text"><span class="perm-name"></span><span class="perm-note"></span></span>' +
+    '<span class="switch"><input type="checkbox"><span class="track"></span></span>';
+  row.querySelector('.perm-name').textContent = name;
+  row.querySelector('.perm-note').textContent = note || '';
+
+  const box = row.querySelector('input');
+  box.checked = !!checked;
+  box.onchange = () => onChange(box.checked, box);
+
+  parent.appendChild(row);
+  return row;
+}
+
+// ---- Hub ----
+
+function renderHubGeneral(pane) {
+  const section = paneSection(pane, {
+    title: 'Delegated work',
+    note:
+      'Agents ask each other to do things with assign_task. Work waits for your approval ' +
+      'unless you relax it here, or per group under Agent group settings.',
+  });
+
+  paneToggleRow(section, {
+    name: 'Approve every task automatically',
+    note: 'The master switch. Everyone skips the queue, whatever groups they hold.',
+    checked: state.settings?.autoApproveTasks,
+    onChange: async (value) => {
+      try {
+        await window.clanker.setAutoApprove(value);
+      } catch (error) {
+        toast(error.message);
+      }
+    },
+  });
+}
+
+function renderHubDefaults(pane) {
+  const section = paneSection(pane, {
+    title: 'Default channel brief',
+    note:
+      'What a newly created channel starts with. Channels that already exist keep what they ' +
+      'have — open one and use "Use the default brief" to adopt this.',
+  });
+
+  const area = document.createElement('textarea');
+  area.rows = 8;
+  area.readOnly = true;
+  area.value = state.defaultBrief || '';
+  section.appendChild(area);
+}
+
+function renderHubConnection(pane) {
+  const section = paneSection(pane, {
+    title: 'Endpoint',
+    note:
+      'The hub binds loopback only and has no auth layer, because it has no network ' +
+      'exposure. Point any MCP client at this URL.',
+  });
+
+  const endpoint = document.createElement('pre');
+  endpoint.className = 'code-block';
+  endpoint.textContent = `http://127.0.0.1:${state.port}/mcp`;
+  section.appendChild(endpoint);
+
+  const listening = paneSection(pane, { title: 'Right now' });
+  const summary = document.createElement('p');
+  summary.className = 'modal-section-note';
+  const online = Array.from(state.agents.values()).filter((a) => a.status === 'online').length;
+  summary.textContent =
+    `${online} agent${online === 1 ? '' : 's'} online, ${state.listeners.length} parked in ` +
+    'wait_for_messages. An agent that is online but not listening only sees your message on its next turn.';
+  listening.appendChild(summary);
+}
+
+// ---- You ----
+
+function renderYourIdentity(pane) {
+  const section = paneSection(pane, {
+    title: 'How agents see you',
+    note:
+      'The handle is the stable key agents @mention. Changing your display name leaves it ' +
+      'alone, so existing mentions keep working.',
+  });
+
+  paneField(section, {
+    label: 'Display name',
+    value: state.self?.displayName,
+    maxLength: 64,
+    onCommit: async (value) => {
+      if (!value) return;
+      try {
+        await window.clanker.setIdentity(value, state.self?.handle);
+        toast('Saved.', 'ok');
+      } catch (error) {
+        toast(error.message);
+      }
+    },
+  });
+
+  paneField(section, {
+    label: 'Handle · how agents @mention you',
+    value: state.self?.handle,
+    mono: true,
+    maxLength: 48,
+    onCommit: async (value) => {
+      if (!value) return;
+      try {
+        await window.clanker.setIdentity(state.self?.displayName, value);
+        toast('Saved.', 'ok');
+      } catch (error) {
+        toast(error.message);
+      }
+    },
+  });
+}
+
+// ---- Channel ----
+
+function renderChannelOverview(pane, channel) {
+  // No heading: the nav item already says Overview, and repeating it wastes
+  // the first line of every pane.
+  const section = paneSection(pane, {});
+
+  paneField(section, {
+    label: 'Topic',
+    value: channel.topic,
+    placeholder: 'One line, shown beside the channel name',
+    onCommit: (value) => saveChannel(channel.name, { topic: value }),
+  });
+
+  const grouping = paneSection(pane, {
+    title: 'Channel group',
+    note:
+      'Channels in a group inherit its brief and file access. Override anything here and ' +
+      'this channel stops following the group until you sync it again.',
+  });
+
+  const select = document.createElement('select');
+  select.className = 'select';
+  const none = document.createElement('option');
+  none.value = '';
+  none.textContent = 'No group';
+  select.appendChild(none);
+  for (const group of state.channelGroups || []) {
+    const option = document.createElement('option');
+    option.value = group.id;
+    option.textContent = group.name;
+    select.appendChild(option);
+  }
+  select.value = channel.channelGroupId || '';
+  select.onchange = async () => {
+    try {
+      await window.clanker.setChannelGroup(channel.name, select.value || null);
+      toast('Saved.', 'ok');
+    } catch (error) {
+      toast(error.message);
+    }
+  };
+  grouping.appendChild(select);
+
+  if (channel.channelGroupId && !channel.briefSynced) {
+    const warning = document.createElement('p');
+    warning.className = 'modal-section-note';
+    warning.textContent = 'This channel has its own brief, so it is not following its group.';
+    grouping.appendChild(warning);
+
+    const resync = document.createElement('button');
+    resync.className = 'control control--ghost';
+    resync.textContent = 'Sync with group';
+    resync.onclick = async () => {
+      try {
+        await window.clanker.resyncChannel(channel.name);
+        toast('Synced.', 'ok');
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    grouping.appendChild(resync);
+  }
+}
+
+function renderChannelBrief(pane, channel) {
+  const inherited = channel.channelGroupId && channel.briefSynced;
+  const section = paneSection(pane, {
+    title: 'Brief',
+    note: inherited
+      ? 'Inherited from this channel’s group. Editing it here makes it this channel’s own, and it stops following the group.'
+      : 'Standing context handed to every agent when it joins, and again with every transcript it reads. House rules go here.',
+  });
+
+  const area = paneTextarea(section, {
+    value: channel.brief,
+    placeholder:
+      'e.g. Payments migration. Answer only about the schema. @billing-worker owns deploys.',
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'form-actions';
+
+  const useDefault = document.createElement('button');
+  useDefault.className = 'control control--ghost';
+  useDefault.textContent = 'Use the default brief';
+  useDefault.onclick = () => {
+    area.value = state.defaultBrief || '';
+    area.dispatchEvent(new Event('input'));
+  };
+
+  const save = document.createElement('button');
+  save.className = 'control control--primary';
+  save.textContent = 'Save brief';
+  save.onclick = () => saveChannel(channel.name, { brief: area.value.trim() });
+
+  actions.append(useDefault, save);
+  section.appendChild(actions);
+}
+
+function renderChannelMembers(pane, channel) {
+  const members = channel.members || [];
+  paneSection(pane, {
+    title: `${members.length} member${members.length === 1 ? '' : 's'}`,
+    note: members.length
+      ? members.map((handle) => '@' + handle).join(', ') +
+        ' — every one of them receives every message here.'
+      : 'Nobody is in this channel yet.',
+  });
+}
+
+async function saveChannel(name, patch) {
+  try {
+    await window.clanker.updateChannel(name, patch);
+    toast(`Saved #${name}.`, 'ok');
+  } catch (error) {
+    toast(`Could not save: ${error.message}`);
+  }
+}
+
+// ---- Channel group ----
+
+function renderCategoryOverview(pane, group) {
+  // No heading: the nav item already says Overview, and repeating it wastes
+  // the first line of every pane.
+  const section = paneSection(pane, {});
+  paneField(section, {
+    label: 'Name',
+    value: group.name,
+    maxLength: 48,
+    onCommit: async (value) => {
+      if (!value) return;
+      try {
+        await window.clanker.updateChannelGroup(group.id, { name: value });
+      } catch (error) {
+        toast(error.message);
+      }
+    },
+  });
+
+  const channels = group.channels || [];
+  paneSection(pane, {
+    title: `${channels.length} channel${channels.length === 1 ? '' : 's'}`,
+    note: channels.length
+      ? channels.map((name) => '#' + name).join(', ')
+      : 'No channels yet. Move one in from its own settings.',
+  });
+}
+
+function renderCategoryBrief(pane, group) {
+  const section = paneSection(pane, {
+    title: 'Brief',
+    note:
+      'Inherited by every channel in this group that has not overridden it. Set the house ' +
+      'rules for a whole workstream once.',
+  });
+
+  const area = paneTextarea(section, {
+    value: group.brief,
+    placeholder: 'e.g. Payments migration. Schema questions only.',
+  });
+
+  const save = document.createElement('button');
+  save.className = 'control control--primary';
+  save.textContent = 'Save brief';
+  save.onclick = async () => {
+    try {
+      await window.clanker.updateChannelGroup(group.id, { brief: area.value.trim() });
+      toast('Saved.', 'ok');
+    } catch (error) {
+      toast(error.message);
+    }
+  };
+  section.appendChild(save);
+}
+
+function renderCategoryAccess(pane, group) {
+  const section = paneSection(pane, {
+    title: 'Who may write files here',
+    note:
+      'Agent groups answer what an agent may do; channel groups answer what the rules are ' +
+      'in a room. This is where they meet. Grants add — an agent that already had write ' +
+      'access keeps it whether or not it is listed here.',
+  });
+
+  if (!state.groups.length) {
+    const empty = document.createElement('p');
+    empty.className = 'modal-section-note';
+    empty.textContent = 'No agent groups exist yet. Create one from the roster.';
+    section.appendChild(empty);
+    return;
+  }
+
+  for (const agentGroup of state.groups) {
+    paneToggleRow(section, {
+      name: agentGroup.name,
+      note: 'Members may add and delete files in this group’s channels.',
+      checked: (group.writeGroupIds || []).includes(agentGroup.id),
+      onChange: async (value) => {
+        try {
+          await window.clanker.setChannelGroupWrite(group.id, agentGroup.id, value);
+        } catch (error) {
+          toast(error.message);
+        }
+      },
+    });
+  }
+}
+
+// ---- Agent group ----
+
+function renderAgentGroupOverview(pane, group) {
+  // No heading: the nav item already says Overview, and repeating it wastes
+  // the first line of every pane.
+  const section = paneSection(pane, {});
+  paneField(section, {
+    label: 'Name',
+    value: group.name,
+    maxLength: 48,
+    onCommit: async (value) => {
+      if (!value) return;
+      try {
+        await window.clanker.renameGroup(group.id, value);
+      } catch (error) {
+        toast(error.message);
+      }
+    },
+  });
+}
+
+/**
  * Permission copy lives here rather than in the hub: the key is the contract,
  * the wording is presentation. Adding a permission means adding an entry —
  * anything ungoverned still renders, just with its raw key as the label.
@@ -1486,122 +2053,103 @@ const PERMISSION_COPY = {
     name: 'Approve tasks automatically',
     note: 'Work raised by members of this group reaches its assignee without waiting for you.',
   },
+  readChannelFiles: {
+    name: 'Read channel files',
+    note: 'The shared folder in every channel this agent is in.',
+  },
+  writeChannelFiles: {
+    name: 'Write channel files',
+    note: 'Add and delete files other members will rely on.',
+  },
+  readGlobalFiles: { name: 'Read global files', note: 'The folder every agent can reach.' },
+  writeGlobalFiles: {
+    name: 'Write global files',
+    note: 'Add and delete files every agent can reach.',
+  },
 };
 
-function openGroupModal(groupId) {
-  const group = state.groups.find((candidate) => candidate.id === groupId);
-  if (!group) return;
+function renderGroupPermissions(pane, group) {
+  const section = paneSection(pane, {
+    title: 'Permissions',
+    note:
+      'Granted to every agent in this group. Permissions add up — an agent holding one ' +
+      'permissive group keeps it, whatever else it holds.',
+  });
 
-  state.editingGroupId = groupId;
-  el.groupModalTitle.textContent = group.name;
-  el.groupName.value = group.name;
-
-  renderGroupPermissions(group);
-  renderGroupMembers(group);
-
-  el.groupModal.hidden = false;
-  el.groupName.focus();
-}
-
-function closeGroupModal() {
-  state.editingGroupId = null;
-  el.groupModal.hidden = true;
-}
-
-function renderGroupPermissions(group) {
-  el.groupPermissions.innerHTML = '';
-
-  // Union of what the group holds and what the app knows about, so a
-  // permission added on either side still appears.
   const keys = Array.from(
     new Set([...Object.keys(PERMISSION_COPY), ...Object.keys(group.permissions || {})])
   );
 
   for (const key of keys) {
     const copy = PERMISSION_COPY[key] || { name: key, note: '' };
-    const row = document.createElement('div');
-    row.className = 'permission-row';
-    row.innerHTML = `
-      <div class="permission-copy">
-        <div class="permission-name">${escapeHtml(copy.name)}</div>
-        ${copy.note ? `<div class="permission-note">${escapeHtml(copy.note)}</div>` : ''}
-      </div>
-      <label class="switch">
-        <input type="checkbox" ${group.permissions?.[key] ? 'checked' : ''}>
-        <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-      </label>
-    `;
-    row.querySelector('input').onchange = async (event) => {
-      try {
-        await window.clanker.setGroupPermission(group.id, key, event.target.checked);
-      } catch (error) {
-        toast(error.message);
-      }
-    };
-    el.groupPermissions.appendChild(row);
+    paneToggleRow(section, {
+      name: copy.name,
+      note: copy.note,
+      checked: group.permissions?.[key] === true,
+      onChange: async (value) => {
+        try {
+          await window.clanker.setGroupPermission(group.id, key, value);
+        } catch (error) {
+          toast(error.message);
+        }
+      },
+    });
   }
 }
 
-function renderGroupMembers(group) {
-  el.groupMembers.innerHTML = '';
+function renderGroupMembers(pane, group) {
+  const section = paneSection(pane, {
+    title: 'Members',
+    note: 'Agents can belong to any number of groups.',
+  });
 
-  const agents = Array.from(state.agents.values()).sort(byPresenceThenName);
-  for (const agent of agents) {
-    const isMember = agent.groupIds?.includes(group.id);
+  for (const agent of Array.from(state.agents.values())) {
+    if (agent.kind === 'human') continue;
+    const isMember = (agent.groups || []).some((held) => held.id === group.id);
+
     const row = document.createElement('button');
-    row.className = `member-row${isMember ? ' is-member' : ''}`;
-    row.innerHTML = `
-      <span class="member-check">${isMember ? icon('check', 'icon--sm') : ''}</span>
-      <span class="dot ${agent.status}"></span>
-      <span class="member-name">${escapeHtml(agent.displayName)}</span>
-      <span class="callsign">${callsign(agent.platform)}</span>
-    `;
+    row.type = 'button';
+    row.className = 'member-row' + (isMember ? ' is-member' : '');
+    row.innerHTML =
+      '<span class="member-name"></span><span class="member-handle mono"></span>' +
+      '<span class="member-state"></span>';
+    row.querySelector('.member-name').textContent = agent.displayName;
+    row.querySelector('.member-handle').textContent = '@' + agent.handle;
+    row.querySelector('.member-state').textContent = isMember ? 'In group' : 'Add';
     row.onclick = async () => {
       try {
         await window.clanker.setGroupMembership(agent.id, group.id, !isMember);
-        const fresh = state.groups.find((candidate) => candidate.id === group.id);
-        if (fresh) renderGroupMembers(fresh);
+        refreshSettings();
       } catch (error) {
         toast(error.message);
       }
     };
-    el.groupMembers.appendChild(row);
+    section.appendChild(row);
   }
 }
 
-el.groupModalClose.onclick = closeGroupModal;
-el.groupDone.onclick = closeGroupModal;
+// ---- Shell wiring ----
 
-// Clicking the backdrop dismisses, clicking the panel does not.
-el.groupModal.onclick = (event) => {
-  if (event.target === el.groupModal) closeGroupModal();
+el.settingsClose.onclick = closeSettings;
+el.settingsSave.onclick = closeSettings;
+
+el.settingsDanger.onclick = async () => {
+  const danger = activeScope?.model?.danger;
+  if (!danger) return;
+  try {
+    if (await danger.run()) closeSettings();
+  } catch (error) {
+    toast(error.message);
+  }
+};
+
+el.settingsModal.onclick = (event) => {
+  if (event.target === el.settingsModal) closeSettings();
 };
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !el.channelModal.hidden) el.channelModal.hidden = true;
-  if (event.key === 'Escape' && !el.groupModal.hidden) closeGroupModal();
+  if (event.key === 'Escape' && !el.settingsModal.hidden) closeSettings();
 });
-
-el.groupName.addEventListener('change', async () => {
-  const name = el.groupName.value.trim();
-  if (!name || !state.editingGroupId) return;
-  try {
-    await window.clanker.renameGroup(state.editingGroupId, name);
-    el.groupModalTitle.textContent = name;
-  } catch (error) {
-    toast(error.message);
-  }
-});
-
-el.groupDelete.onclick = async () => {
-  if (!state.editingGroupId) return;
-  try {
-    await window.clanker.deleteGroup(state.editingGroupId);
-    closeGroupModal();
-  } catch (error) {
-    toast(error.message);
-  }
-};
 
 // ============================================
 // Task board
@@ -1766,47 +2314,9 @@ function renderSelf() {
   el.youHandle.textContent = `@${state.self.handle}`;
 }
 
-function toggleIdentityForm(show) {
-  el.identityForm.hidden = !show;
-  el.editIdentity.setAttribute('aria-expanded', String(show));
-  if (!show) return;
-
-  el.identityName.value = state.self?.displayName || '';
-  el.identityHandle.value = state.self?.handle || '';
-  el.identityName.focus();
-  el.identityName.select();
-}
-
-el.editIdentity.onclick = () => toggleIdentityForm(el.identityForm.hidden);
-el.identityCancel.onclick = () => toggleIdentityForm(false);
-
-for (const field of [el.identityName, el.identityHandle]) {
-  field.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') toggleIdentityForm(false);
-  });
-}
-
-el.identityForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  const name = el.identityName.value.trim();
-  const handle = el.identityHandle.value.trim();
-  if (!name && !handle) return toggleIdentityForm(false);
-
-  try {
-    // Send the handle only when it actually changed, so simply renaming
-    // yourself never disturbs mentions other agents already use.
-    state.self = await window.clanker.setIdentity(
-      name || undefined,
-      handle && handle !== state.self?.handle ? handle : undefined
-    );
-    state.agents.set(state.self.id, state.self);
-    toggleIdentityForm(false);
-    renderSelf();
-    renderRoster();
-  } catch (error) {
-    toast(`Could not update your name: ${error.message}`);
-  }
-});
+// Your own identity is a settings scope like any other, rather than a form
+// that only exists in one corner of the rail.
+el.editIdentity.onclick = () => openSettings('you');
 
 // ============================================
 // Rail sections
@@ -1941,15 +2451,14 @@ window.clanker.on('hub:groups', (groups) => {
   state.groups = groups;
   renderRoster();
 
-  // Keep an open settings modal in step with the change it just made.
-  if (!state.editingGroupId) return;
-  const open = groups.find((group) => group.id === state.editingGroupId);
-  if (open) {
-    renderGroupPermissions(open);
-    renderGroupMembers(open);
-  } else {
-    closeGroupModal();
-  }
+  // Keep an open settings dialog in step with the change it just made.
+  refreshSettings();
+});
+
+window.clanker.on('hub:channelGroups', (groups) => {
+  state.channelGroups = groups;
+  renderRail();
+  refreshSettings();
 });
 
 window.clanker.on('hub:task', (task) => {
@@ -2017,6 +2526,7 @@ async function start() {
   state.settings = snapshot.settings || state.settings;
   state.listeners = snapshot.listeners || [];
   state.defaultBrief = snapshot.defaultBrief || '';
+  state.channelGroups = snapshot.channelGroups || [];
 
   el.autoApprove.checked = !!state.settings.autoApproveTasks;
   renderWindowState(await window.clanker.isMaximized());
