@@ -340,6 +340,74 @@ async function verifySharedRoom() {
 }
 
 // ============================================
+// Coming back as yourself
+// ============================================
+
+/**
+ * Found in the field: a roster with two unnamed "claude-code" agents in it
+ * while the named ones sat offline beside them.
+ *
+ * An agent that names itself with join_hub *claims* its handle. On its next run
+ * it auto-registers as a placeholder, asks for its own name back, and used to
+ * be refused — the handle was held by its own offline ghost. So the agents that
+ * followed the documented flow were exactly the ones that fragmented, while a
+ * connection identified only by header survived reconnects fine.
+ */
+async function verifyIdentityReclaim() {
+  console.log('\ncoming back as yourself');
+
+  const { handlers } = require('../src/mcp/handlers');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-reclaim-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  // ---- first run: names itself, accrues state ----
+  const placeholder = hub.registerAgent({ handle: 'claude-code', kind: 'mcp', claimed: false });
+  const firstSession = { id: 'sess-1', agentId: placeholder.id };
+  handlers.join_hub({ name: 'Yokohama D2D' }, { hub, session: firstSession });
+
+  const original = hub.getAgent(firstSession.agentId);
+  const group = hub.createGroup({ name: 'Portals' });
+  hub.setGroupMembership(original.id, group.id, true);
+  const work = hub.createChannel({ name: 'portal-work' });
+  hub.joinChannel(original.id, work.id);
+  original.cursor = 42;
+
+  hub.setAgentStatus(original.id, 'offline');
+
+  // ---- second run: placeholder asks for its own name back ----
+  const returning = hub.registerAgent({ handle: 'claude-code', kind: 'mcp', claimed: false });
+  const secondSession = { id: 'sess-2', agentId: returning.id };
+  handlers.join_hub({ name: 'Yokohama D2D' }, { hub, session: secondSession });
+
+  const reclaimed = hub.getAgent(secondSession.agentId);
+  check('a returning agent gets its own handle back', reclaimed.handle === 'yokohama-d2d', reclaimed.handle);
+  check('it is the same record, not a copy', reclaimed.id === original.id);
+  check('the session follows the adopted identity', secondSession.agentId === original.id);
+  check('it keeps its groups', reclaimed.groupIds.size === 1);
+  check('it keeps its read position', reclaimed.cursor === 42, reclaimed.cursor);
+  check('it keeps its channels', reclaimed.channels.has(work.id));
+  check('it comes back online', reclaimed.status === 'online');
+  check('the placeholder is gone', !hub.getAgentByHandle('claude-code'));
+  check('no duplicate was minted', !hub.getAgentByHandle('yokohama-d2d-2'));
+  check('the roster holds one agent, not three', hub.listAgents().length === 1, hub.listAgents().map((a) => a.handle));
+
+  // ---- a connected agent's name is not up for grabs ----
+  hub.registerAgent({ handle: 'busy-agent', kind: 'mcp' });
+  const impostor = hub.registerAgent({ handle: 'claude-code', kind: 'mcp', claimed: false });
+  let refused = false;
+  try {
+    handlers.join_hub({ name: 'busy agent' }, { hub, session: { id: 'sess-3', agentId: impostor.id } });
+  } catch (error) {
+    refused = /already taken/.test(error.message);
+  }
+  check('a live agent cannot have its name taken', refused);
+
+  await store.close();
+}
+
+// ============================================
 // Pausing the net
 // ============================================
 
@@ -974,6 +1042,7 @@ async function main() {
   await verifyReconnectIdentity();
   await verifyChannelPlacement();
   await verifySharedRoom();
+  await verifyIdentityReclaim();
   await verifyPause();
   await verifySpeakingDoesNotSkip();
   await verifyHumanIsNotAnAgent();

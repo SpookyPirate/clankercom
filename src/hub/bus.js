@@ -317,7 +317,26 @@ class Hub extends EventEmitter {
     if (wantsNewHandle) {
       const nextHandle = slugify(handle || name, agent.handle);
       const claimedBy = this.handles.get(nextHandle);
+
+      // Reconnecting as yourself. An agent that named itself with join_hub
+      // *claimed* its handle, so on its next run it auto-registered as a
+      // placeholder, asked for its own name back, and was refused — the handle
+      // was held by its own offline ghost. The agents following the documented
+      // flow were the ones that fragmented into claude-code-2, -3, while the
+      // roster filled with unnamed duplicates.
+      //
+      // An offline MCP agent's handle is a name nobody is using. Adopting the
+      // existing record rather than renaming into it is what keeps the identity
+      // whole: its id is the one groups, tasks, and channel memberships already
+      // point at, and its read position is where this agent actually got to.
       if (claimedBy && claimedBy !== agentId) {
+        const adopted = this._adoptOfflineIdentity(agent, claimedBy, {
+          label,
+          platform,
+          description,
+        });
+        if (adopted) return adopted;
+
         throw new Error(
           `the handle "${nextHandle}" is already taken. Pick a different one with the handle field.`
         );
@@ -571,6 +590,53 @@ class Hub extends EventEmitter {
       `you do not have permission to ${action}. Ask the human to grant "${permission}" ` +
         `to one of your groups in the console.`
     );
+  }
+
+  /**
+   * Let a freshly auto-registered connection become an existing offline agent.
+   *
+   * Returns the adopted agent, or null when the takeover is not safe — in which
+   * case the caller raises the ordinary "handle taken" error.
+   *
+   * Deliberately narrow. Only a placeholder may adopt: an agent that has
+   * already claimed a name this session asking for someone else's is a genuine
+   * conflict, not a reconnect, and silently merging two live identities would
+   * be far worse than refusing. And only an *offline* target: taking a name out
+   * from under a connected agent would break the conversation it is having.
+   */
+  _adoptOfflineIdentity(placeholder, targetId, { label, platform, description } = {}) {
+    if (placeholder.handleClaimed) return null;
+
+    const target = this.agents.get(targetId);
+    if (!target || target.kind !== 'mcp' || target.status !== 'offline') return null;
+
+    // The connection moves to the durable record, not the other way round.
+    target.status = 'online';
+    target.lastSeen = Date.now();
+    target.sessionId = placeholder.sessionId ?? target.sessionId;
+    if (label) target.displayName = label;
+    if (platform) target.platform = platform;
+    if (description) target.description = description;
+    target.handleClaimed = true;
+
+    // Anything the placeholder picked up before it knew who it was — a channel
+    // from X-Clanker-Channel, the default channel — comes along, or the agent
+    // would silently leave rooms it had just joined.
+    for (const channelId of placeholder.channels) {
+      const channel = this.channels.get(channelId);
+      if (!channel) continue;
+      channel.members.delete(placeholder.id);
+      channel.members.add(target.id);
+      target.channels.add(channelId);
+    }
+
+    this.agents.delete(placeholder.id);
+    this.handles.delete(placeholder.handle);
+
+    this._persist();
+    this.emit('agent:removed', { id: placeholder.id, handle: placeholder.handle });
+    this.emit('agent:updated', this.publicAgent(target));
+    return target;
   }
 
   resolveGroup(reference) {

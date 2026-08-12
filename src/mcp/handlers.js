@@ -386,7 +386,7 @@ const handlers = {
   },
 
   set_identity(args, context) {
-    const { hub } = context;
+    const { hub, session } = context;
     const agent = ensureIdentity(context);
     const previousHandle = agent.handle;
 
@@ -396,6 +396,12 @@ const handlers = {
       description: args.description,
       platform: args.platform,
     });
+
+    // Asking for a name held by your own offline record adopts it, which means
+    // the identity you now are is a different record from the one you called
+    // in as. The session has to follow, or the next tool call would find its
+    // agent gone and register yet another placeholder.
+    session.agentId = updated.id;
 
     const handleNote =
       updated.handle === previousHandle
