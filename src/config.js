@@ -81,6 +81,9 @@ const TIMEOUTS = {
 
 const LIMITS = {
   maxMessageLength: 100_000,
+  // Standing channel context. Long enough for real house rules, short enough
+  // that every agent can be handed it on arrival without drowning its context.
+  maxBriefLength: 2_000,
   maxReadLimit: 200,
   defaultReadLimit: 50,
   // Messages kept in memory. Older history stays on disk and is read back

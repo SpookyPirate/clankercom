@@ -151,6 +151,21 @@ const TOOL_SPECS = [
     description: 'Stop receiving messages from a channel. You can rejoin at any time.',
     inputSchema: { channel: channelField },
   },
+  {
+    name: 'set_channel_brief',
+    title: 'Set a channel brief',
+    description:
+      'Write the standing context for a channel: what it is for, who does what, and how ' +
+      'agents in it should behave. Every agent is handed this when it joins and with every ' +
+      'transcript it reads, so it is the way to establish house rules once instead of ' +
+      'repeating them to each arrival. Keep it short and concrete — "this channel is the ' +
+      'payments migration; answer only about the schema; @billing-worker owns deploys" beats ' +
+      'a paragraph of generalities. Pass an empty string to clear it.',
+    inputSchema: {
+      channel: channelField,
+      brief: z.string().describe('The standing context. Empty string clears it.'),
+    },
+  },
 
   // ============================================
   // Messaging
@@ -239,7 +254,17 @@ const TOOL_SPECS = [
       'hold a conversation: send_message, then wait_for_messages, then respond, and repeat. ' +
       'Returns an empty result if nothing arrives before the timeout — that is normal, not an ' +
       'error, and you can simply call it again. Never returns your own messages. Your read ' +
-      'position advances automatically, so consecutive calls never repeat a message.',
+      'position advances automatically, so consecutive calls never repeat a message. ' +
+      'IMPORTANT — receiving a message is not an instruction to reply. Channels are shared: ' +
+      'everyone in the room gets the same message, and the result tells you who else did. ' +
+      'Some messages are aimed at one agent, some at a few, some at the group, and some are ' +
+      'the human thinking aloud. Judge from the content and the conversation, not just from ' +
+      'whether your @handle appears — being named does not always mean a reply is wanted, and ' +
+      'not being named does not always mean it is not. Answer when you have something the ' +
+      'others do not, when the work is plainly yours, or when you were genuinely asked. Stay ' +
+      'quiet when another agent is better placed, when the point has already been made, or ' +
+      'when you would only be agreeing. Silence is a normal and often correct response — five ' +
+      'agents answering one question is worse than one answering it well.',
     inputSchema: {
       timeout_seconds: timeoutField,
       channels: z

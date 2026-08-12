@@ -969,22 +969,42 @@ function renderDelivery() {
     const who = pending.seenBy.map((handle) => '@' + handle).join(', ');
     const waited = pending.readAt ? Date.now() - pending.readAt : 0;
 
+    // Read receipts were always per-agent, but reporting only the first reader
+    // made a group message look handled while four others had not seen it. The
+    // denominator is the audience captured when the message was sent.
+    const total = Math.max(pending.audience.length, pending.seenBy.length);
+    const everyone = pending.seenBy.length >= total;
+
+    // Never "@a, @b is working on it" — a list takes a plural verb, and with
+    // several agents the useful figure is the count, not the roll call.
+    const reach =
+      total <= 1
+        ? `Read by ${who}`
+        : everyone
+          ? `All ${total} agents have it`
+          : `Read by ${pending.seenBy.length} of ${total} · ${who}`;
+
     if (replying) {
       // A browser peer reports its own relay phase, so this one is observed
       // rather than inferred — the strongest signal available.
       tone = 'is-seen';
-      text = `${who} read it · @${replying.handle} is replying…`;
+      text = `${reach} · @${replying.handle} is replying…`;
     } else if (waited > QUIET_AFTER_MS) {
       // Animating forever is how a status bar teaches you to ignore it.
       tone = 'is-quiet';
-      text = `${who} read it ${since(pending.readAt)} ago — no reply yet`;
-      hint = 'Agents answer on their next turn; a long task can take a while.';
+      text = `${reach} — no reply yet after ${since(pending.readAt)}`;
+      hint = everyone
+        ? 'Agents answer on their next turn; a long task can take a while.'
+        : 'The rest see it when their runtime next gives them a turn.';
     } else if (waited > WORKING_AFTER_MS) {
       tone = 'is-working';
-      text = `${who} is working on it · ${since(pending.readAt)}`;
+      text =
+        total <= 1
+          ? `${who} is working on it · ${since(pending.readAt)}`
+          : `${reach} · ${since(pending.readAt)}`;
     } else {
       tone = 'is-seen';
-      text = `Read by ${who}`;
+      text = reach;
     }
   } else if (replying) {
     text = `@${replying.handle} is replying…`;
@@ -1037,6 +1057,10 @@ function trackDelivery(message) {
     // send itself, so its receipt is emitted before this row exists. The hub
     // reports that delivery in the reply instead of us missing the event.
     seenBy: message.deliveredTo || [],
+    // Who was in the channel when this was sent — the denominator for "2 of 5".
+    // Captured at send time on purpose: an agent joining afterwards did not
+    // miss this message, so counting it as an outstanding reader would be wrong.
+    audience: message.audience || [],
     readAt: message.deliveredTo?.length ? Date.now() : null,
   };
   startDeliveryClock();

@@ -567,6 +567,8 @@ class Hub extends EventEmitter {
       id: `ch_${this.nextChannelNum++}`,
       name: channelName,
       topic: topic || '',
+      // Standing context handed to agents on arrival; see setChannelBrief.
+      brief: '',
       isDm,
       createdBy: createdBy || null,
       createdAt: Date.now(),
@@ -641,6 +643,7 @@ class Hub extends EventEmitter {
       id: channel.id,
       name: channel.name,
       topic: channel.topic,
+      brief: channel.brief || '',
       isDm: channel.isDm,
       createdAt: channel.createdAt,
       members: Array.from(channel.members)
@@ -697,6 +700,8 @@ class Hub extends EventEmitter {
     // Author is implicitly caught up on their own message.
     if (author) author.cursor = Math.max(author.cursor || 0, message.seq);
 
+    message.audience = this._audienceFor(channel, authorId);
+
     this.emit('message', message);
 
     // Waking a waiter removes it from the pool, so the moment this returns the
@@ -706,6 +711,45 @@ class Hub extends EventEmitter {
     // back with the message rather than being reconstructed from events.
     message.deliveredTo = this._wakeWaiters(message);
     return message;
+  }
+
+  /**
+   * The agents a message was actually aimed at, captured when it is posted.
+   *
+   * Read receipts are per-agent and always were, but the console reported the
+   * first reader with no denominator — so "Read by @alpha" looked like the
+   * message had been handled when four others had not seen it. Knowing how many
+   * were in the room at the time is what turns that into "1 of 5".
+   *
+   * Humans are excluded because they generate no receipts, and the author is
+   * excluded because reading your own message is not a fact worth reporting.
+   */
+  _audienceFor(channel, authorId) {
+    const handles = [];
+    for (const memberId of channel.members) {
+      if (memberId === authorId) continue;
+      const agent = this.agents.get(memberId);
+      if (!agent || agent.kind === 'human') continue;
+      handles.push(agent.handle);
+    }
+    return handles;
+  }
+
+  /**
+   * Standing context every agent is handed on arrival in a channel.
+   *
+   * An agent joining mid-conversation knows only what the tool descriptions
+   * say — nothing about what this particular room is for or how to behave in
+   * it. With several agents in one channel that gap is what produces six
+   * replies to a message meant for one of them.
+   */
+  setChannelBrief(channelReference, brief) {
+    const channel = this.getChannel(channelReference);
+    if (!channel) throw new Error(`unknown channel: ${channelReference}`);
+    channel.brief = String(brief || '').slice(0, LIMITS.maxBriefLength || 2000);
+    this._persist();
+    this.emit('channel:updated', this.publicChannel(channel));
+    return channel;
   }
 
   /** Post an unattributed notice (joins, errors, relay diagnostics). */

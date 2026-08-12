@@ -235,6 +235,111 @@ async function verifyChannelPlacement() {
 }
 
 // ============================================
+// Several agents in one room
+// ============================================
+
+/**
+ * A channel is a broadcast, not a queue, and the console has to say so.
+ *
+ * Read receipts were always per-agent, but only the first reader was reported —
+ * so "Read by @alpha" looked like a group message had been handled while three
+ * others had not seen it. The audience captured at post time is the denominator
+ * that fixes it. The rest of this covers what an agent is told about the room,
+ * which is what stops six agents all answering the same question.
+ */
+async function verifySharedRoom() {
+  console.log('\nseveral agents in one room');
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-room-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  const server = createHubServer({ hub, peers: null });
+  const { httpServer, port } = await server.listen();
+  const url = `http://127.0.0.1:${port}/mcp`;
+
+  const connect = async (name) => {
+    const client = new Client({ name, version: '1.0.0' });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(url), {
+        requestInit: { headers: { 'X-Clanker-Agent': name } },
+      })
+    );
+    await call(client, 'list_channels');
+    return client;
+  };
+
+  try {
+    const human = hub.registerAgent({ name: 'operator', kind: 'human', platform: 'human' });
+    hub.joinChannel(human.id, hub.getChannel('general').id);
+
+    const alpha = await connect('alpha');
+    const bravo = await connect('bravo');
+    await connect('charlie');
+
+    // ---- everyone receives it; nobody consumes it ----
+    const waiting = [alpha, bravo].map((client) =>
+      call(client, 'wait_for_messages', { timeout_seconds: 6 })
+    );
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const posted = hub.postMessage({
+      channelId: hub.getChannel('general').id,
+      authorId: human.id,
+      text: 'Anyone know about the index, @bravo?',
+    });
+    const heard = await Promise.all(waiting);
+    check('a channel message reaches every parked agent', heard.every((r) => r.includes('index')));
+
+    // ---- the audience is the denominator the console was missing ----
+    check(
+      'a post records the audience it went to',
+      ['alpha', 'bravo', 'charlie'].every((handle) => posted.audience.includes(handle)),
+      posted.audience
+    );
+    check('the author is not part of their own audience', !posted.audience.includes('operator'));
+    check(
+      'read receipts accumulate per agent rather than latching on the first',
+      Array.from(posted.seenBy).length === 2,
+      Array.from(posted.seenBy || [])
+    );
+
+    // ---- a reader does not consume the message for anyone else ----
+    const late = await call(await connect('charlie'), 'read_messages', { channel: 'general', limit: 3 });
+    check('an agent reading later still sees the message', late.includes('index'));
+
+    // ---- what an agent is told about the room ----
+    check('the transcript names who else is present', late.includes('Also here:'), late);
+    check(
+      'a named agent is told the message is for it',
+      (await call(bravo, 'read_messages', { channel: 'general', limit: 1 })).includes('names you specifically')
+    );
+    check(
+      'an unnamed agent is told the message is not for it',
+      (await call(alpha, 'read_messages', { channel: 'general', limit: 1 })).includes('not you')
+    );
+
+    // ---- standing context, set once ----
+    await call(alpha, 'set_channel_brief', {
+      channel: 'general',
+      brief: 'Schema questions only.',
+    });
+    const arriving = await connect('delta');
+    const welcome = await call(arriving, 'join_channel', { channel: 'general' });
+    check('an arriving agent is handed the channel brief', welcome.includes('Schema questions only'), welcome);
+    check('the brief also rides along with transcripts', (await call(bravo, 'read_messages', { channel: 'general', limit: 1 })).includes('Schema questions only'));
+
+    await call(alpha, 'set_channel_brief', { channel: 'general', brief: '' });
+    check('a brief can be cleared', !hub.getChannel('general').brief);
+  } finally {
+    hub.releaseWaiters();
+    await server.closeAllSessions();
+    await new Promise((resolve) => httpServer.close(resolve));
+    await store.close();
+  }
+}
+
+// ============================================
 // Session reaping
 // ============================================
 
@@ -607,6 +712,7 @@ async function main() {
   await verifyPortSelection();
   await verifyReconnectIdentity();
   await verifyChannelPlacement();
+  await verifySharedRoom();
   await verifySessionReaping();
   await verifyGroupsAndTasks();
   await verifyFilesAndHistory();

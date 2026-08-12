@@ -34,7 +34,7 @@ function clock(timestamp) {
  * Render messages as a compact transcript. Sequence numbers are included so a
  * caller can resume precisely with since_seq.
  */
-function formatTranscript(messages, { header } = {}) {
+function formatTranscript(messages, { header, hub, viewer } = {}) {
   if (!messages.length) return header ? `${header}\n(no messages)` : '(no messages)';
 
   const lines = messages.map((message) => {
@@ -44,12 +44,61 @@ function formatTranscript(messages, { header } = {}) {
       message.kind === 'system'
         ? '* system'
         : `@${message.authorHandle} (${message.authorDisplayName}, ${message.authorPlatform})`;
-    return `[${message.seq}] ${clock(message.ts)} #${message.channelName} ${who}: ${message.text}`;
+    return `[${message.seq}] ${clock(message.ts)} #${message.channelName} ${who}: ${message.text}${addressing(message, viewer)}`;
   });
 
   const latest = messages[messages.length - 1].seq;
   const body = lines.join('\n');
-  return `${header ? header + '\n' : ''}${body}\n\n-- latest seq: ${latest} --`;
+  const context = roomContext(hub, viewer, messages);
+  return `${header ? header + '\n' : ''}${context}${body}\n\n-- latest seq: ${latest} --`;
+}
+
+/**
+ * Mark who a message named, so an agent can tell what is aimed at it.
+ *
+ * Deliberately a statement of fact rather than an instruction. A message that
+ * mentions nobody is not automatically yours to answer, and one that mentions
+ * you is not automatically a question — the agent still has to read the thing.
+ * This just removes the need to parse handles out of prose to find out who was
+ * addressed.
+ */
+function addressing(message, viewer) {
+  const mentions = message.mentions || [];
+  if (!mentions.length) return '';
+  if (viewer && mentions.includes(viewer.handle)) {
+    const others = mentions.filter((handle) => handle !== viewer.handle);
+    return others.length
+      ? `\n      ^ names you, and also ${others.map((h) => '@' + h).join(', ')}`
+      : '\n      ^ names you specifically';
+  }
+  return `\n      ^ names ${mentions.map((h) => '@' + h).join(', ')} — not you`;
+}
+
+/**
+ * Who else is in the room, and what the room is for.
+ *
+ * With one agent this is noise; with six it is the difference between a
+ * conversation and a pile-on. An agent that cannot see who else received a
+ * message has no way to judge whether answering is helpful or redundant.
+ */
+function roomContext(hub, viewer, messages) {
+  if (!hub) return '';
+  const channel = hub.getChannel(messages[messages.length - 1].channelId);
+  if (!channel) return '';
+
+  const others = Array.from(channel.members)
+    .map((id) => hub.getAgent(id))
+    .filter((agent) => agent && agent.id !== viewer?.id)
+    .map((agent) => `@${agent.handle}${agent.kind === 'human' ? ' (human)' : ''}`);
+
+  const lines = [];
+  if (channel.brief) lines.push(`Channel brief: ${channel.brief}`);
+  lines.push(
+    others.length
+      ? `Also here: ${others.join(', ')} — they receive these messages too, so a reply from you may be redundant.`
+      : 'Nobody else is in this channel.'
+  );
+  return lines.join('\n') + '\n\n';
 }
 
 /** Render tasks as a compact list. Status leads, since that drives what to do next. */
@@ -371,7 +420,39 @@ const handlers = {
     const agent = ensureIdentity(context);
     const channel = requireChannel(hub, args.channel);
     hub.joinChannel(agent.id, channel.id);
-    return asText(`Joined #${channel.name}. ${channel.members.size} member(s).`);
+
+    // Hand over the standing context immediately. An agent that has to discover
+    // the house rules by breaking them has already spent someone's turn.
+    const others = Array.from(channel.members)
+      .map((id) => hub.getAgent(id))
+      .filter((member) => member && member.id !== agent.id)
+      .map((member) => `@${member.handle}${member.kind === 'human' ? ' (human)' : ''}`);
+
+    return asText(
+      [
+        `Joined #${channel.name}. ${channel.members.size} member(s).`,
+        channel.brief ? `\nChannel brief: ${channel.brief}` : '',
+        others.length
+          ? `\nAlso here: ${others.join(', ')}. They receive the same messages you do, so ` +
+            `not every message is yours to answer.`
+          : '',
+      ]
+        .filter(Boolean)
+        .join('')
+    );
+  },
+
+  set_channel_brief(args, context) {
+    const { hub } = context;
+    ensureIdentity(context);
+    const channel = requireChannel(hub, args.channel);
+    hub.setChannelBrief(channel.id, args.brief);
+
+    return asText(
+      channel.brief
+        ? `Brief set for #${channel.name}. Every agent joining or reading it now gets:\n${channel.brief}`
+        : `Brief cleared for #${channel.name}.`
+    );
   },
 
   leave_channel(args, context) {
@@ -424,7 +505,7 @@ const handlers = {
       sinceSeq: args.since_seq ?? null,
     });
     hub.markSeen(messages, agent);
-    return asText(formatTranscript(messages, { header: `#${channel.name}` }));
+    return asText(formatTranscript(messages, { header: `#${channel.name}`, hub, viewer: agent }));
   },
 
   async search_messages(args, context) {
@@ -476,7 +557,7 @@ const handlers = {
           `This is normal — call wait_for_messages again to keep listening.`
       );
     }
-    return asText(formatTranscript(messages, { header: `${messages.length} new message(s)` }));
+    return asText(formatTranscript(messages, { header: `${messages.length} new message(s)`, hub, viewer: agent }));
   },
 
   async ask(args, context) {
