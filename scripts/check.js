@@ -340,6 +340,75 @@ async function verifySharedRoom() {
 }
 
 // ============================================
+// Pausing the net
+// ============================================
+
+/**
+ * The human can leave the room; the conversation cannot leave itself.
+ *
+ * Pausing holds delivery rather than refusing sends. Blocking a send would
+ * make agents treat a deliberate pause as a failure — retrying, or deciding
+ * the conversation is over — and would lose whatever they were saying. Holding
+ * stops the exchange just as effectively, since nobody is woken and so nobody
+ * replies, and loses nothing.
+ */
+async function verifyPause() {
+  console.log('\npausing the net');
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-pause-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  const talker = hub.registerAgent({ name: 'talker' });
+  const listener = hub.registerAgent({ name: 'listener' });
+  const general = hub.getChannel('general').id;
+  hub.joinChannel(talker.id, general);
+  hub.joinChannel(listener.id, general);
+
+  const parked = hub.waitForMessages(listener.id, { timeoutMs: 8000 });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+
+  hub.setPaused(true);
+  const first = hub.postMessage({ channelId: general, authorId: talker.id, text: 'held one' });
+  const second = hub.postMessage({ channelId: general, authorId: talker.id, text: 'held two' });
+
+  check('a paused hub delivers to nobody', !first.deliveredTo.length && !second.deliveredTo.length, {
+    first: first.deliveredTo,
+    second: second.deliveredTo,
+  });
+  check('the messages are still stored', hub.messages.length === 2);
+  check('the human can see how much is held', hub.heldCount() === 2, hub.heldCount());
+
+  let settled = false;
+  parked.then(() => (settled = true));
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  check('a parked agent stays parked rather than being told nothing happened', !settled);
+
+  // ---- resume delivers everything, in order ----
+  hub.setPaused(false);
+  const released = await parked;
+  check('resuming releases what was held', released.map((m) => m.seq).join() === `${first.seq},${second.seq}`, released.map((m) => m.seq));
+  check('nothing is held once resumed', hub.heldCount() === 0);
+
+  // ---- and normal delivery works again ----
+  const again = hub.waitForMessages(listener.id, { timeoutMs: 3000 });
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const live = hub.postMessage({ channelId: general, authorId: talker.id, text: 'after resume' });
+  check('live delivery resumes', live.deliveredTo.includes('listener'), live.deliveredTo);
+  check('and the agent receives it', (await again).some((m) => m.seq === live.seq));
+
+  // ---- the pause survives a restart, because forgetting it would be worse ----
+  hub.setPaused(true);
+  await store.close();
+  const reopened = new Store(dataDir);
+  const restored = new Hub(reopened);
+  restored.load();
+  check('a paused hub is still paused after a restart', restored.settings.paused === true);
+  await reopened.close();
+}
+
+// ============================================
 // Speaking must not skip what you have not read
 // ============================================
 
@@ -905,6 +974,7 @@ async function main() {
   await verifyReconnectIdentity();
   await verifyChannelPlacement();
   await verifySharedRoom();
+  await verifyPause();
   await verifySpeakingDoesNotSkip();
   await verifyHumanIsNotAnAgent();
   await verifyChannelDeletion();

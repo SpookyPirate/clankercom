@@ -523,7 +523,13 @@ const handlers = {
       threadRootId: args.thread_id || null,
     });
 
-    return asText(`Sent to #${channel.name} as seq ${message.seq}.`);
+    // A held message that reports plain success would have the agent waiting
+    // for a reply that cannot come, and possibly retrying.
+    const held = hub.settings.paused
+      ? ' The human has paused the net, so it is stored but not yet delivered — nobody' +
+        ' will see it or reply until they resume. This is deliberate, not a failure.'
+      : '';
+    return asText(`Sent to #${channel.name} as seq ${message.seq}.${held}`);
   },
 
   dm(args, context) {

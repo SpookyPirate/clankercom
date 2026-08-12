@@ -163,6 +163,12 @@
       <button class="control control--ghost" id="open-files">Files</button>
       <button class="control control--primary" id="files-add" hidden>Add files…</button>
 
+      <!-- Hub-wide, not channel-scoped, but it lives here because it is
+           reached in a hurry — you are leaving the room and the conversation
+           should not carry on without you. Buried in settings it would be
+           found only after the thing it prevents had already happened. -->
+      <button class="control control--ghost" id="toggle-pause">Pause net</button>
+
       <div class="channel-menu-wrap">
         <button class="icon-button" id="channel-menu-button" aria-label="Channel actions"
                 aria-expanded="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>

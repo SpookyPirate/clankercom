@@ -107,6 +107,7 @@ const el = {
   openHubSettings: document.getElementById('open-hub-settings'),
   addChannelGroup: document.getElementById('add-channel-group'),
   mentionPopup: document.getElementById('mention-popup'),
+  togglePause: document.getElementById('toggle-pause'),
   actionExport: document.getElementById('action-export'),
   actionClear: document.getElementById('action-clear'),
   confirmModal: document.getElementById('confirm-modal'),
@@ -746,6 +747,20 @@ async function openDirectMessage(handle) {
 function renderNetStrip() {
   const transmitting = state.peers.filter((peer) => peer.state === 'typing' || peer.state === 'streaming');
 
+  // Paused outranks everything. A held net looks exactly like a quiet one, and
+  // a human who forgot they paused it would conclude the app had broken —
+  // which is the same class of confusion the delivery indicator exists to end.
+  if (state.settings?.paused) {
+    el.netStrip.classList.remove('is-live');
+    el.netStrip.classList.add('is-paused');
+    const held = state.heldCount || 0;
+    el.netStatus.textContent = held
+      ? `PAUSED · ${held} message${held === 1 ? '' : 's'} held · agents are not receiving anything`
+      : 'PAUSED · agents are not receiving anything';
+    return;
+  }
+  el.netStrip.classList.remove('is-paused');
+
   if (!transmitting.length) {
     el.netStrip.classList.remove('is-live');
     const online = Array.from(state.agents.values()).filter((a) => a.status === 'online').length;
@@ -1293,6 +1308,12 @@ function renderDelivery() {
     }
   } else if (replying) {
     text = `@${replying.handle} is replying…`;
+  } else if (state.settings?.paused) {
+    // Nothing is going anywhere, and saying "queued" here would be a
+    // half-truth that hides the reason.
+    tone = 'is-waiting';
+    text = 'Held — you paused the net';
+    hint = 'Resume from the channel header and everything held is delivered at once.';
   } else if (online) {
     // Connected but not parked in wait_for_messages. The message is safely
     // stored and the agent will see it — but only once its own runtime gives
@@ -1659,6 +1680,23 @@ el.actionSettings.onclick = () => {
 
 // The hub gear sits beside your name, where an app-level setting is looked
 // for — the same place Discord and Slack put it.
+el.togglePause.onclick = async () => {
+  try {
+    await window.clanker.setPaused(!state.settings?.paused);
+  } catch (error) {
+    toast(error.message);
+  }
+};
+
+function renderPauseControl() {
+  const paused = !!state.settings?.paused;
+  el.togglePause.textContent = paused ? 'Resume net' : 'Pause net';
+  // Resuming is the affirmative action while paused, so it takes the accent;
+  // pausing is a quiet precaution and should not shout at you all session.
+  el.togglePause.classList.toggle('control--primary', paused);
+  el.togglePause.classList.toggle('control--ghost', !paused);
+}
+
 el.openHubSettings.onclick = () => openSettings('hub');
 
 // Created empty and named in its own settings, so there is one place a group
@@ -2874,8 +2912,12 @@ window.clanker.on('hub:reveal', ({ channel, view }) => {
 });
 
 window.clanker.on('hub:settings', (settings) => {
+  state.heldCount = settings.heldCount || 0;
   state.settings = settings;
   el.autoApprove.checked = !!settings.autoApproveTasks;
+  renderPauseControl();
+  renderNetStrip();
+  renderDelivery();
 });
 
 // ============================================
@@ -2898,6 +2940,7 @@ async function start() {
   state.settings = snapshot.settings || state.settings;
   state.listeners = snapshot.listeners || [];
   state.defaultBrief = snapshot.defaultBrief || '';
+  state.heldCount = snapshot.settings?.heldCount || 0;
   state.channelGroups = snapshot.channelGroups || [];
 
   el.autoApprove.checked = !!state.settings.autoApproveTasks;
@@ -2909,6 +2952,9 @@ async function start() {
   renderRail();
   renderPeerTabs();
   renderPeerControls();
+  // Paused survives a restart, so the button and the strip have to reflect it
+  // from the first paint — otherwise reopening a paused hub looks like a dead one.
+  renderPauseControl();
   renderNetStrip();
   await selectChannel(snapshot.defaultChannel);
 }

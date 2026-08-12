@@ -96,7 +96,7 @@ class Hub extends EventEmitter {
 
     // Hub-wide settings, persisted so the human never has to wonder whether
     // approval is currently required.
-    this.settings = { autoApproveTasks: false };
+    this.settings = { autoApproveTasks: false, paused: false };
 
     this.taskBoard = new TaskBoard(this);
     this.files = new FileVault(this, store.dataDir);
@@ -1239,8 +1239,12 @@ class Hub extends EventEmitter {
     const cursor = sinceSeq != null ? sinceSeq : (agent.cursor || 0);
     const scope = this._resolveScope(agent, channels);
 
-    // If anything already qualifies, return it without waiting at all.
-    const backlog = this.messages.filter((m) => this._isForAgent(m, agent, scope, cursor));
+    // If anything already qualifies, return it without waiting at all — unless
+    // the human has paused the net, in which case the agent parks instead and
+    // gets everything the moment they resume.
+    const backlog = this.settings.paused
+      ? []
+      : this.messages.filter((m) => this._isForAgent(m, agent, scope, cursor));
     if (backlog.length) {
       agent.cursor = Math.max(agent.cursor || 0, backlog[backlog.length - 1].seq);
       this.markSeen(backlog, agent);
@@ -1348,8 +1352,65 @@ class Hub extends EventEmitter {
     return agent.channels.has(message.channelId);
   }
 
+  /**
+   * Pause or resume delivery across the whole hub.
+   *
+   * Holds messages rather than refusing them. Blocking sends would make agents
+   * treat a deliberate pause as a failure — retrying, or concluding the
+   * conversation is over — and would lose whatever they were trying to say.
+   * Holding stops the back-and-forth just as effectively, because nobody is
+   * woken and so nobody replies, while losing nothing.
+   *
+   * The human can walk away from a running conversation; the conversation
+   * cannot walk away from itself. This is the control that makes leaving safe.
+   */
+  setPaused(paused) {
+    const next = !!paused;
+    if (this.settings.paused === next) return this.settings;
+
+    this.settings = { ...this.settings, paused: next };
+    this._persist();
+    this.emit('settings:changed', this.settings);
+
+    if (!next) this._releaseHeld();
+    return this.settings;
+  }
+
+  /** How much is waiting on a resume, for the human deciding whether to. */
+  heldCount() {
+    if (!this.settings.paused) return 0;
+    const held = new Set();
+    for (const waiter of this.waiters) {
+      for (const message of this.messages) {
+        if (this._isForAgent(message, waiter.agent, waiter.scope, waiter.cursor)) held.add(message.id);
+      }
+    }
+    return held.size;
+  }
+
+  /** Deliver everything that accumulated while paused, in order. */
+  _releaseHeld() {
+    for (const waiter of Array.from(this.waiters)) {
+      const backlog = this.messages.filter((m) =>
+        this._isForAgent(m, waiter.agent, waiter.scope, waiter.cursor)
+      );
+      if (!backlog.length) continue;
+
+      clearTimeout(waiter.timer);
+      this.waiters.delete(waiter);
+      waiter.agent.cursor = Math.max(waiter.agent.cursor || 0, backlog[backlog.length - 1].seq);
+      this.markSeen(backlog, waiter.agent);
+      waiter.resolve(backlog);
+    }
+    this._announceListeners();
+  }
+
   /** Hand the message to everyone parked on it. Returns the handles woken. */
   _wakeWaiters(message) {
+    // Paused: the message is stored and the waiters stay parked. They collect
+    // it on resume, so nothing is lost and nothing moves.
+    if (this.settings.paused) return [];
+
     const delivered = new Set();
     for (const waiter of Array.from(this.waiters)) {
       if (!this._isForAgent(message, waiter.agent, waiter.scope, waiter.cursor)) continue;

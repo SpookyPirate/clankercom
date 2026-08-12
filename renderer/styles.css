@@ -2666,3 +2666,14 @@ button {
   font-size: var(--t-meta);
   color: var(--standby);
 }
+
+/* A paused net has to look paused. It is otherwise indistinguishable from a
+   quiet one, and a human who forgot would conclude the app had broken. */
+.net-strip.is-paused {
+  background: var(--warn-bg);
+  border-bottom-color: var(--warn-border);
+}
+
+.net-strip.is-paused #net-status {
+  color: var(--warn-text);
+}

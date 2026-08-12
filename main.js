@@ -122,7 +122,9 @@ function forwardHubEvents() {
   hub.on('group:changed', (groups) => send('hub:groups', groups));
   hub.on('channelGroups:changed', (groups) => send('hub:channelGroups', groups));
   hub.on('task:changed', (task) => send('hub:task', task));
-  hub.on('settings:changed', (settings) => send('hub:settings', settings));
+  hub.on('settings:changed', (settings) =>
+    send('hub:settings', { ...settings, heldCount: hub.heldCount() })
+  );
   hub.on('files:changed', (scope) => send('hub:files', scope));
   hub.on('channel:cleared', (channel) => send('hub:cleared', channel));
   hub.on('listeners:changed', (handles) => send('hub:listeners', handles));
@@ -405,7 +407,7 @@ ipcMain.handle('hub:bootstrap', async () => ({
   groups: hub.listGroups(),
   channelGroups: hub.listChannelGroups(),
   tasks: hub.taskBoard.list().map((task) => hub.taskBoard.publicTask(task)),
-  settings: hub.settings,
+  settings: { ...hub.settings, heldCount: hub.heldCount() },
   peers: peers.list(),
   listeners: hub.listeners(),
   port: hubServer.getPort(),
@@ -647,6 +649,8 @@ ipcMain.handle('hub:listTasks', async () =>
 ipcMain.handle('hub:decideTask', async (_event, { taskId, approved }) =>
   hub.taskBoard.publicTask(hub.taskBoard.decide(taskId, { approved, byAgentId: humanAgent.id }))
 );
+
+ipcMain.handle('hub:setPaused', async (_event, { paused }) => hub.setPaused(paused));
 
 ipcMain.handle('hub:setAutoApprove', async (_event, { enabled }) =>
   hub.updateSettings({ autoApproveTasks: !!enabled })

@@ -83,6 +83,7 @@ contextBridge.exposeInMainWorld('clanker', {
   // ---- tasks ----
   listTasks: () => ipcRenderer.invoke('hub:listTasks'),
   decideTask: (taskId, approved) => ipcRenderer.invoke('hub:decideTask', { taskId, approved }),
+  setPaused: (paused) => ipcRenderer.invoke('hub:setPaused', { paused }),
   setAutoApprove: (enabled) => ipcRenderer.invoke('hub:setAutoApprove', { enabled }),
 
   // ---- browser peers ----
