@@ -27,7 +27,7 @@ const {
   shell,
 } = require('electron');
 
-const { APP_NAME, DEFAULT_CHANNEL } = require('./src/config');
+const { APP_NAME, DEFAULT_CHANNEL, DEFAULT_CHANNEL_BRIEF } = require('./src/config');
 const { Store } = require('./src/hub/store');
 const { Hub } = require('./src/hub/bus');
 const { PeerManager } = require('./src/browser/peer-manager');
@@ -396,6 +396,9 @@ ipcMain.handle('hub:bootstrap', async () => ({
   listeners: hub.listeners(),
   port: hubServer.getPort(),
   defaultChannel: DEFAULT_CHANNEL,
+  // Offered so the console can restore a channel to the house default rather
+  // than the human having to remember what it said.
+  defaultBrief: DEFAULT_CHANNEL_BRIEF,
 }));
 
 ipcMain.handle('hub:readChannel', async (_event, { channel, limit }) => {
@@ -421,6 +424,15 @@ ipcMain.handle('hub:createChannel', async (_event, { name, topic }) => {
   const channel = hub.createChannel({ name, topic, createdBy: humanAgent.id });
   hub.joinChannel(humanAgent.id, channel.id);
   return hub.publicChannel(channel);
+});
+
+ipcMain.handle('hub:updateChannel', async (_event, { channel, topic, brief }) => {
+  const target = hub.getChannel(channel);
+  if (!target) throw new Error();
+  if (typeof topic === 'string') target.topic = topic.slice(0, 120);
+  if (typeof brief === 'string') hub.setChannelBrief(target.id, brief);
+  else hub.persist();
+  return hub.publicChannel(target);
 });
 
 // Your own name, changeable from the console the same way an agent changes

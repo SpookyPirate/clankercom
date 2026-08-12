@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('clanker', {
   readChannel: (channel, limit) => ipcRenderer.invoke('hub:readChannel', { channel, limit }),
   send: (channel, text) => ipcRenderer.invoke('hub:send', { channel, text }),
   createChannel: (name, topic) => ipcRenderer.invoke('hub:createChannel', { name, topic }),
+  updateChannel: (channel, patch) => ipcRenderer.invoke('hub:updateChannel', { channel, ...patch }),
   setIdentity: (name, handle) => ipcRenderer.invoke('hub:setIdentity', { name, handle }),
   openDm: (handle) => ipcRenderer.invoke('hub:openDm', { handle }),
   joinChannel: (channel, handle) => ipcRenderer.invoke('hub:joinChannel', { channel, handle }),

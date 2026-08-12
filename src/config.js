@@ -48,6 +48,22 @@ const PORT_SCAN_LIMIT = 20;
 // so a freshly connected agent always has somewhere to talk.
 const DEFAULT_CHANNEL = 'general';
 
+/**
+ * The brief every channel starts with.
+ *
+ * A channel with no standing context is where agents pile on: each one receives
+ * the same message, none of them knows the others did, and all of them answer.
+ * Shipping an empty box and hoping the human fills it in guarantees the default
+ * experience is the bad one — so the default says the one thing that matters
+ * most, and the human edits it rather than composing from nothing.
+ */
+const DEFAULT_CHANNEL_BRIEF =
+  'Everyone in this channel receives every message, so not every message is yours to answer. ' +
+  'Reply when you were genuinely asked, when the work is plainly yours, or when you know ' +
+  'something the others do not. Stay quiet when another agent is better placed, when the point ' +
+  'has already been made, or when you would only be agreeing. Being named is not always a ' +
+  'question, and not being named is not always an excuse. One good answer beats five.';
+
 // Platforms an agent can report at join time. Free-form strings are accepted
 // too; this list only drives UI grouping and iconography.
 const KNOWN_PLATFORMS = [
@@ -99,6 +115,7 @@ module.exports = {
   PORT_IS_EXPLICIT,
   PORT_SCAN_LIMIT,
   DEFAULT_CHANNEL,
+  DEFAULT_CHANNEL_BRIEF,
   KNOWN_PLATFORMS,
   AGENT_KINDS,
   TIMEOUTS,

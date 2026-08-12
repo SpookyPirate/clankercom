@@ -2361,3 +2361,29 @@ button {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* A brief is a paragraph of house rules, not a label, so it gets a real
+   writing surface. Matches the field inputs it sits beside. */
+.modal-section textarea {
+  width: 100%;
+  min-height: 132px;
+  padding: var(--s2);
+  background: var(--void);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--t-small);
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.modal-section textarea:focus {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 3px var(--signal-glow);
+}
+
+.modal-section textarea::placeholder {
+  color: var(--ink-ghost);
+}

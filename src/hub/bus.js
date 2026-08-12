@@ -16,7 +16,7 @@
 
 const { EventEmitter } = require('events');
 
-const { DEFAULT_CHANNEL, TIMEOUTS, LIMITS } = require('../config');
+const { DEFAULT_CHANNEL, DEFAULT_CHANNEL_BRIEF, TIMEOUTS, LIMITS } = require('../config');
 const { TaskBoard } = require('./tasks');
 const { FileVault } = require('./files');
 
@@ -170,6 +170,14 @@ class Hub extends EventEmitter {
 
   _restoreChannel(raw) {
     const channel = { ...raw, members: new Set(raw.members || []) };
+
+    // Channels created before briefs existed have no field at all; give them
+    // the house default so an upgrade improves them rather than leaving them
+    // silently worse than a fresh install. An empty string is left alone — that
+    // is a human having deliberately cleared it, not an absence.
+    if (channel.brief === undefined) {
+      channel.brief = channel.isDm ? '' : DEFAULT_CHANNEL_BRIEF;
+    }
     this.channels.set(channel.id, channel);
     this.channelNames.set(channel.name, channel.id);
   }
@@ -568,7 +576,10 @@ class Hub extends EventEmitter {
       name: channelName,
       topic: topic || '',
       // Standing context handed to agents on arrival; see setChannelBrief.
-      brief: '',
+      // Every channel starts with the house default rather than empty, so the
+      // out-of-the-box behaviour is the good one. DMs get none — there is no
+      // room to read, so there is nothing to be tactful about.
+      brief: isDm ? '' : DEFAULT_CHANNEL_BRIEF,
       isDm,
       createdBy: createdBy || null,
       createdAt: Date.now(),

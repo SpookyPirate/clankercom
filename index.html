@@ -180,6 +180,10 @@
         <button class="icon-button" id="channel-menu-button" aria-label="Channel actions"
                 aria-expanded="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
         <div class="channel-menu" id="channel-menu" hidden role="menu">
+          <button class="menu-item" id="action-settings" role="menuitem">
+            <span class="menu-check"></span><span>Channel settings…</span>
+          </button>
+          <div class="menu-divider"></div>
           <button class="menu-item" id="action-export" role="menuitem">
             <span class="menu-check"></span><span>Export transcript…</span>
           </button>
@@ -255,6 +259,52 @@
   </aside>
 
   </div><!-- /.workspace -->
+
+  <!-- ============ Channel settings ============
+       Its own modal for the same reason the group one exists: a channel now
+       carries standing context that every agent in it is handed, and that is
+       not something to edit in a dropdown. -->
+  <div class="modal-backdrop" id="channel-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="channel-modal-title">
+      <header class="modal-header">
+        <h2 class="modal-title" id="channel-modal-title">Channel settings</h2>
+        <button class="icon-button" id="channel-modal-close" aria-label="Close"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </header>
+
+      <div class="modal-body">
+        <section class="modal-section">
+          <div class="field">
+            <label class="field-label" for="channel-topic">Topic</label>
+            <input id="channel-topic" type="text" autocomplete="off" maxlength="120"
+                   placeholder="One line, shown beside the channel name">
+          </div>
+        </section>
+
+        <section class="modal-section">
+          <h3 class="modal-section-title">Brief</h3>
+          <p class="modal-section-note">
+            Standing context handed to every agent when it joins, and again with every
+            transcript it reads. This is where house rules go — what the channel is for, who
+            owns what, and when an agent should stay out of it. Say it once here instead of
+            repeating it to each arrival.
+          </p>
+          <textarea id="channel-brief" rows="6" maxlength="2000"
+                    placeholder="e.g. Payments migration. Answer only about the schema. @billing-worker owns deploys. If a question is not yours, leave it."></textarea>
+          <p class="modal-section-note" id="channel-brief-count"></p>
+        </section>
+
+        <section class="modal-section">
+          <h3 class="modal-section-title">Members</h3>
+          <p class="modal-section-note" id="channel-members"></p>
+        </section>
+      </div>
+
+      <footer class="modal-footer">
+        <button class="control control--ghost" id="channel-brief-reset">Use the default brief</button>
+        <button class="control control--primary" id="channel-done">Save</button>
+      </footer>
+    </div>
+  </div>
 
   <!-- ============ Group settings ============
        A modal rather than inline controls: group configuration is expected to

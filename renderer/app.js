@@ -107,6 +107,16 @@ const el = {
   filesAdd: document.getElementById('files-add'),
   channelMenuButton: document.getElementById('channel-menu-button'),
   channelMenu: document.getElementById('channel-menu'),
+  actionSettings: document.getElementById('action-settings'),
+  channelModal: document.getElementById('channel-modal'),
+  channelModalTitle: document.getElementById('channel-modal-title'),
+  channelModalClose: document.getElementById('channel-modal-close'),
+  channelTopic: document.getElementById('channel-topic'),
+  channelBrief: document.getElementById('channel-brief'),
+  channelBriefCount: document.getElementById('channel-brief-count'),
+  channelBriefReset: document.getElementById('channel-brief-reset'),
+  channelMembers: document.getElementById('channel-members'),
+  channelDone: document.getElementById('channel-done'),
   actionExport: document.getElementById('action-export'),
   actionClear: document.getElementById('action-clear'),
   confirmModal: document.getElementById('confirm-modal'),
@@ -1367,6 +1377,70 @@ document.addEventListener('click', (event) => {
   }
 });
 
+// ============================================
+// Channel settings
+// ============================================
+
+/**
+ * A channel's brief is the one setting agents actually read, so it gets room to
+ * be written properly rather than a line in a dropdown.
+ */
+function openChannelModal(channelName) {
+  const channel = state.channels.get(channelName);
+  if (!channel) return;
+
+  el.channelModalTitle.textContent = `#${channel.name}`;
+  el.channelTopic.value = channel.topic || '';
+  el.channelBrief.value = channel.brief || '';
+
+  const members = (channel.members || []).map((handle) => '@' + handle);
+  el.channelMembers.textContent = members.length
+    ? `${members.length} here: ${members.join(', ')}. Every one of them receives every message.`
+    : 'Nobody is in this channel yet.';
+
+  renderBriefCount();
+  el.channelModal.hidden = false;
+  el.channelBrief.focus();
+}
+
+function renderBriefCount() {
+  const used = el.channelBrief.value.length;
+  el.channelBriefCount.textContent = used
+    ? `${used} of 2000 characters. Every agent reads this on arrival, so shorter is kinder.`
+    : 'Empty — agents get no standing context for this channel.';
+}
+
+async function saveChannelSettings() {
+  const channel = el.channelModalTitle.textContent.replace(/^#/, '');
+  try {
+    await window.clanker.updateChannel(channel, {
+      topic: el.channelTopic.value.trim(),
+      brief: el.channelBrief.value.trim(),
+    });
+    el.channelModal.hidden = true;
+    toast(`Saved #${channel}.`, 'ok');
+  } catch (error) {
+    toast(`Could not save: ${error.message}`);
+  }
+}
+
+el.actionSettings.onclick = () => {
+  toggleChannelMenu(false);
+  openChannelModal(state.activeChannel);
+};
+
+el.channelModalClose.onclick = () => (el.channelModal.hidden = true);
+el.channelDone.onclick = saveChannelSettings;
+el.channelBrief.addEventListener('input', renderBriefCount);
+el.channelBriefReset.onclick = () => {
+  el.channelBrief.value = state.defaultBrief || '';
+  renderBriefCount();
+  el.channelBrief.focus();
+};
+el.channelModal.onclick = (event) => {
+  if (event.target === el.channelModal) el.channelModal.hidden = true;
+};
+
 el.actionExport.onclick = async () => {
   toggleChannelMenu(false);
   try {
@@ -1504,6 +1578,7 @@ el.groupModal.onclick = (event) => {
 };
 
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !el.channelModal.hidden) el.channelModal.hidden = true;
   if (event.key === 'Escape' && !el.groupModal.hidden) closeGroupModal();
 });
 
@@ -1941,6 +2016,7 @@ async function start() {
   state.tasks = snapshot.tasks || [];
   state.settings = snapshot.settings || state.settings;
   state.listeners = snapshot.listeners || [];
+  state.defaultBrief = snapshot.defaultBrief || '';
 
   el.autoApprove.checked = !!state.settings.autoApproveTasks;
   renderWindowState(await window.clanker.isMaximized());
