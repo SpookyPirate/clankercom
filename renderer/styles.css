@@ -2677,3 +2677,28 @@ button {
 .net-strip.is-paused #net-status {
   color: var(--warn-text);
 }
+
+/* The hint line now carries the pause control, so it becomes a row: guidance
+   leads, the action trails, matching every other control strip in the app. */
+.composer-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+.composer-hint > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Smaller than a header control: it sits under the composer, where a
+   full-height button would compete with the message box for weight. */
+.composer-hint .control {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 var(--s3);
+  font-size: var(--t-meta);
+}

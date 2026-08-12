@@ -1313,7 +1313,7 @@ function renderDelivery() {
     // half-truth that hides the reason.
     tone = 'is-waiting';
     text = 'Held — you paused the net';
-    hint = 'Resume from the channel header and everything held is delivered at once.';
+    hint = 'Resume below the message box and everything held is delivered at once.';
   } else if (online) {
     // Connected but not parked in wait_for_messages. The message is safely
     // stored and the agent will see it — but only once its own runtime gives
@@ -1690,7 +1690,10 @@ el.togglePause.onclick = async () => {
 
 function renderPauseControl() {
   const paused = !!state.settings?.paused;
-  el.togglePause.textContent = paused ? 'Resume net' : 'Pause net';
+  el.togglePause.textContent = paused ? 'Resume' : 'Pause';
+  el.togglePause.title = paused
+    ? 'Deliver everything held and let agents talk again'
+    : 'Hold delivery to every agent, in every channel';
   // Resuming is the affirmative action while paused, so it takes the accent;
   // pausing is a quiet precaution and should not shout at you all session.
   el.togglePause.classList.toggle('control--primary', paused);

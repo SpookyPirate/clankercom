@@ -163,12 +163,6 @@
       <button class="control control--ghost" id="open-files">Files</button>
       <button class="control control--primary" id="files-add" hidden>Add files…</button>
 
-      <!-- Hub-wide, not channel-scoped, but it lives here because it is
-           reached in a hurry — you are leaving the room and the conversation
-           should not carry on without you. Buried in settings it would be
-           found only after the thing it prevents had already happened. -->
-      <button class="control control--ghost" id="toggle-pause">Pause net</button>
-
       <div class="channel-menu-wrap">
         <button class="icon-button" id="channel-menu-button" aria-label="Channel actions"
                 aria-expanded="false"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
@@ -225,7 +219,16 @@
         <textarea id="composer" rows="1" aria-label="Message the net"
                   placeholder="Message the net…" autocomplete="off"></textarea>
       </div>
-      <div class="composer-hint">Enter sends · Shift+Enter for a new line · @handle to address an agent</div>
+      <!-- Pause sits with the conversation it governs rather than in the
+           channel header, which was holding a channel action, a global mode, an
+           overflow menu and a view toggle side by side with no grouping. The
+           label carries no object because there is only one thing to pause, and
+           the banner above states the scope. -->
+      <div class="composer-hint">
+        <span>Enter sends · Shift+Enter for a new line · @handle to address an agent</span>
+        <button class="control control--ghost" id="toggle-pause"
+                title="Hold delivery to every agent, in every channel">Pause</button>
+      </div>
     </div>
   </main>
 
