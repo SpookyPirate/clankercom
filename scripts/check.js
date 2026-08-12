@@ -406,6 +406,19 @@ async function verifyHumanIsNotAnAgent() {
   check('the human cannot be put in an agent group', groupingRefused);
   check('the human already has every permission', hub.can(human.id, 'writeGlobalFiles'));
 
+  // ---- a self-DM is a channel nothing can ever be delivered to ----
+  let selfDmRefused = false;
+  try {
+    hub.getOrCreateDm(human.id, human.id);
+  } catch (error) {
+    selfDmRefused = /with yourself/.test(error.message);
+  }
+  check('a direct message to yourself is refused', selfDmRefused);
+  check(
+    'no self-DM channel was left behind',
+    !Array.from(hub.channels.values()).some((c) => c.isDm && c.members.size < 2)
+  );
+
   // ---- agents are still managed normally ----
   hub.setGroupMembership(agent.id, group.id, true);
   check('an agent can still be grouped', hub.publicAgent(agent).groups.length === 1);

@@ -406,7 +406,15 @@ function byPresenceThenName(a, b) {
 function renderRoster() {
   el.roster.innerHTML = '';
 
-  const agents = Array.from(state.agents.values()).sort(byPresenceThenName);
+  // The roster is who you can talk to and manage — which is the agents. You are
+  // already shown, with the same name, handle, and presence dot, in the footer
+  // below it. Listing yourself twice was not only redundant: the row's action is
+  // "open a direct message", and the only person you cannot usefully DM is
+  // yourself.
+  const agents = Array.from(state.agents.values())
+    .filter((agent) => agent.kind !== 'human')
+    .sort(byPresenceThenName);
+
   if (!agents.length) {
     el.roster.innerHTML = '<div class="rail-empty">No agents have joined yet.</div>';
     return;

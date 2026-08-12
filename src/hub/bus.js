@@ -843,6 +843,14 @@ class Hub extends EventEmitter {
 
   /** Get or create the canonical DM channel between two agents. */
   getOrCreateDm(agentIdA, agentIdB) {
+    // A self-DM is a channel with one member that can never receive anything —
+    // wait_for_messages skips your own messages — and once created it sits in
+    // the direct list permanently. The name is derived from the pair, so this
+    // has to be refused here rather than in whichever caller happens to ask.
+    if (agentIdA === agentIdB) {
+      throw new Error('you cannot open a direct message with yourself');
+    }
+
     const name = dmChannelName(agentIdA, agentIdB);
     const existing = this.channelNames.get(name);
     if (existing) return this.channels.get(existing);
