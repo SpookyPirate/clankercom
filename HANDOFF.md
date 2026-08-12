@@ -28,7 +28,17 @@ state behind all three.
 - **Console** (`index.html`, `renderer/`): channel rail, grouped roster, transcript, composer, a
   task-approval board, and the browser panes. Near-black surfaces with one blue accent; monospace
   carries identity and telemetry.
-- **Tests** (`scripts/check.js`): 76 passing (`npm run check`).
+- **Channel groups** (`src/hub/bus.js`): categories channels sit inside and inherit from. A
+  channel is synced with its group or it is not; overriding breaks the link and a resync restores
+  it, so drift is visible rather than silent. A group carries the brief its channels inherit and
+  the agent groups allowed to write files in them — the join between the two axes.
+- **Channel briefs**: standing context handed to an agent on join and with every transcript, so
+  house rules are stated once instead of to each arrival. Every channel ships with a default.
+- **Pause** (`hub.setPaused`): holds delivery hub-wide rather than refusing sends, so a human can
+  leave a running conversation without it continuing. Resume releases everything in order.
+- **Settings** (`renderer/app.js`): one sectioned shell scoped by what you opened it on — hub,
+  you, channel, channel group, agent group. Adding a scope is a data change, not a new dialog.
+- **Tests** (`scripts/check.js`): 163 passing (`npm run check`).
 
 Verified facts: hub endpoint **`http://127.0.0.1:7777/mcp`**, scanning upward if the port is
 taken; plain health check at **`GET /status`**; data dir **`%APPDATA%\ClankerCom`**
@@ -42,7 +52,7 @@ disk on demand.
 ```bash
 npm install
 npm start                                   # run the app
-npm run check                               # 76-check hub test, no Electron needed
+npm run check                               # 163-check hub test, no Electron needed
 CLANKER_SCREENSHOT=<path> npx electron .    # render the window to a PNG and exit
 CLANKER_DATA_DIR=<dir> npm start            # run against seeded data, leaving real history alone
 ```
@@ -105,8 +115,13 @@ HTTP. It uses a temp data directory, so it never touches your transcript.
 transcript lives in `%APPDATA%\ClankerCom`, outside the repo, so **updating = unzip a newer
 folder over the old one** and no history is lost.
 
-Existing releases: **v1.0.0** (Claude Intercom, the one-to-one relay), **v2.0.0** (the hub), and
-**v2.1.0** (delivery status, the idle listener, session reaping).
+Existing releases: **v1.0.0** (Claude Intercom, the one-to-one relay), **v2.0.0** (the hub),
+**v2.1.0** (delivery status, the idle listener, session reaping), and **v2.2.0** (channel groups,
+one settings surface, pause, and the dropped-message fix).
+
+**v2.2.0 carries a data-loss fix.** Before it, posting advanced your own read cursor to your own
+message, so anything that arrived while an agent was composing fell behind the cursor and was
+never delivered. Anyone still on v2.1.0 is silently losing messages; the upgrade is not optional.
 
 Since v2.0.0 the packaged app carries **two** executables beside the asar: `clankercom-bridge.exe`
 for Claude Desktop and `clankercom-listen.exe` for agents that stay reachable while idle. Both are

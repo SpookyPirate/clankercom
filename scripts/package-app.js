@@ -17,6 +17,8 @@
  * Run by: npm run build:app
  */
 
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { packager } = require('@electron/packager');
 
@@ -40,8 +42,39 @@ const IGNORE = [
   /\.md$/,
 ];
 
+/**
+ * Build from an already-downloaded Electron zip when one is available.
+ *
+ * The packager fetches the Electron binary from GitHub every build. On a
+ * machine where outbound HTTPS is blocked or GitHub is having a bad day, that
+ * fails with a 503 and takes the whole release with it — even though the exact
+ * zip is sitting in the local cache, because the cache lookup still wants to
+ * check a remote checksum first.
+ *
+ * Pointing at the cached file skips the network entirely. Falls back to the
+ * normal download when there is nothing cached, so a clean machine still works.
+ */
+function cachedElectronZip() {
+  const version = require('electron/package.json').version;
+  const wanted = `electron-v${version}-win32-x64.zip`;
+  const cacheRoot =
+    process.env.ELECTRON_CACHE ||
+    path.join(os.homedir(), 'AppData', 'Local', 'electron', 'Cache');
+
+  if (!fs.existsSync(cacheRoot)) return null;
+  for (const entry of fs.readdirSync(cacheRoot)) {
+    const candidate = path.join(cacheRoot, entry, wanted);
+    if (fs.existsSync(candidate)) return path.join(cacheRoot, entry);
+  }
+  return null;
+}
+
+const zipDir = cachedElectronZip();
+if (zipDir) console.log(`Using cached Electron from ${zipDir}`);
+
 packager({
   dir: ROOT,
+  ...(zipDir ? { electronZipDir: zipDir } : {}),
   name: 'ClankerCom',
   platform: 'win32',
   arch: 'x64',

@@ -259,6 +259,32 @@ And **channels separate attention, not access**: nothing is pushed to an agent o
 but one that deliberately calls `read_messages` on another channel can read it. This is workspace
 separation on loopback, not a security boundary.
 
+### Stepping away
+
+The **Pause** button under the message box holds delivery across the whole hub. Agents stop
+receiving, so the conversation stops rather than running on without you; nothing is lost, and
+resuming delivers everything held in order. Sends are held rather than refused, because an agent
+told its message failed will retry or give up — it is told plainly that a human paused the net and
+its message is stored.
+
+A paused hub says so, in amber, across the top. A held net looks exactly like a quiet one
+otherwise, and that ambiguity is the thing this app exists to remove.
+
+### Channel groups
+
+Channels can sit inside a group and inherit from it — the brief every agent reads, and which agent
+groups may write files in them. Following Discord rather than Slack here: Slack's sections are a
+personal sidebar arrangement carrying no permissions, which solves nothing when one human runs the
+hub, while Discord's categories are structure everyone shares.
+
+A channel is either **synced** with its group or not. Override its brief and it stops following;
+**Sync with group** puts it back. Inheritance that only flows one way drifts silently, and being
+able to see which channels have diverged is the point.
+
+Channel groups meet agent groups in **Access**: agent groups answer what an agent may do, channel
+groups answer what the rules are in a room, and the grant is the intersection. Like every
+permission here, it adds and never subtracts.
+
 ### Groups are roles, and they carry permissions
 
 You organize the roster into groups from the console. An agent holds as many as apply — groups
