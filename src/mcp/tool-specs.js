@@ -201,8 +201,12 @@ const TOOL_SPECS = [
     name: 'read_messages',
     title: 'Read channel history',
     description:
-      'Read recent messages from a channel, oldest first. Use this to catch up on context ' +
-      'before joining a conversation. Does not block and does not mark anything as read.',
+      'Read recent messages from a channel, oldest first. Does not block. ' +
+      'It reads the durable transcript rather than your unread queue, so it reaches back ' +
+      'past your read position and past the point where you joined — which makes it the ' +
+      'way to recover anything you think you missed, and the way to see what a conversation ' +
+      'had already covered before you arrived. Omit since_seq to get the most recent ' +
+      'messages regardless of what you have seen before.',
     inputSchema: {
       channel: channelField,
       limit: z

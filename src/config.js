@@ -62,7 +62,7 @@ const DEFAULT_CHANNEL_BRIEF =
   'Reply when you were genuinely asked, when the work is plainly yours, or when you know ' +
   'something the others do not. Stay quiet when another agent is better placed, when the point ' +
   'has already been made, or when you would only be agreeing. Being named is not always a ' +
-  'question, and not being named is not always an excuse. One good answer beats five.';
+  'question, and not being named is not always an excuse. One good answer beats five. If you agree, say what you checked — an agreement backed by nothing is worth less than a disagreement backed by a file you opened. Say plainly which parts you verified and which you are guessing at; a confident guess reads exactly like a checked fact to everyone else, and they will build on it.';
 
 // Platforms an agent can report at join time. Free-form strings are accepted
 // too; this list only drives UI grouping and iconography.

@@ -15,6 +15,10 @@
 const { TIMEOUTS, DEFAULT_CHANNEL } = require('../config');
 const { slugify } = require('../hub/bus');
 
+// Handles that mean "the room" rather than a person. Humans reach for these
+// without checking whether the product has them.
+const BROADCAST_MENTIONS = new Set(['all', 'here', 'everyone', 'channel']);
+
 // ============================================
 // Result formatting
 // ============================================
@@ -44,7 +48,7 @@ function formatTranscript(messages, { header, hub, viewer } = {}) {
       message.kind === 'system'
         ? '* system'
         : `@${message.authorHandle} (${message.authorDisplayName}, ${message.authorPlatform})`;
-    return `[${message.seq}] ${clock(message.ts)} #${message.channelName} ${who}: ${message.text}${addressing(message, viewer)}`;
+    return `[${message.seq}] ${clock(message.ts)} #${message.channelName} ${who}: ${message.text}${addressing(message, viewer, hub)}`;
   });
 
   const latest = messages[messages.length - 1].seq;
@@ -62,16 +66,34 @@ function formatTranscript(messages, { header, hub, viewer } = {}) {
  * This just removes the need to parse handles out of prose to find out who was
  * addressed.
  */
-function addressing(message, viewer) {
+function addressing(message, viewer, hub) {
   const mentions = message.mentions || [];
   if (!mentions.length) return '';
+
+  // @all / @here / @everyone address the room. Written naturally by a human who
+  // expects them to work, they used to resolve to nothing — and the "not you"
+  // branch below then told every agent, flatly and wrongly, that a message
+  // meant for all of them was not for them.
+  if (mentions.some((handle) => BROADCAST_MENTIONS.has(handle))) {
+    return '\n      ^ addressed to everyone here, which includes you';
+  }
+
   if (viewer && mentions.includes(viewer.handle)) {
     const others = mentions.filter((handle) => handle !== viewer.handle);
     return others.length
       ? `\n      ^ names you, and also ${others.map((h) => '@' + h).join(', ')}`
       : '\n      ^ names you specifically';
   }
-  return `\n      ^ names ${mentions.map((h) => '@' + h).join(', ')} — not you`;
+
+  // Only speak about handles that exist. A mention of something unknown — a
+  // typo, a stale name, prose that happens to start with @ — says nothing about
+  // who the message is for, and asserting "not you" from it is confidently
+  // wrong. An agent reading it reasonably trusts it, because everything else
+  // here is true; being silent costs nothing and being wrong costs a reply.
+  const known = hub ? mentions.filter((handle) => hub.getAgentByHandle(handle)) : mentions;
+  if (!known.length) return '';
+
+  return `\n      ^ names ${known.map((h) => '@' + h).join(', ')} — not you`;
 }
 
 /**
@@ -91,15 +113,26 @@ function roomContext(hub, viewer, messages) {
     .filter((agent) => agent && agent.id !== viewer?.id)
     .map((agent) => `@${agent.handle}${agent.kind === 'human' ? ' (human)' : ''}`);
 
-  const lines = [];
+  const roster = others.length
+    ? `Also here: ${others.join(', ')} — they receive these messages too, so a reply from you may be redundant.`
+    : 'Nobody else is in this channel.';
+
   // The effective brief: a channel synced to its group reads the group's.
   const brief = hub.effectiveBrief(channel);
-  if (brief) lines.push(`Channel brief: ${brief}`);
-  lines.push(
-    others.length
-      ? `Also here: ${others.join(', ')} — they receive these messages too, so a reply from you may be redundant.`
-      : 'Nobody else is in this channel.'
-  );
+
+  // Repeated only when it has changed. An agent sitting in a listening loop was
+  // paying for the full brief and roster on *every* return — measured at ~700
+  // tokens a poll by an agent that had to keep one open — which taxed the exact
+  // behaviour the app wants. The roster is short and changes constantly, so it
+  // always rides along; the brief is long and near-static, so it is sent when
+  // an agent has not seen this version of it.
+  const stamp = `${channel.id}:${brief}`;
+  const seenAlready = viewer && viewer.briefSeen === stamp;
+  if (viewer) viewer.briefSeen = stamp;
+
+  const lines = [];
+  if (brief && !seenAlready) lines.push(`Channel brief: ${brief}`);
+  lines.push(roster);
   return lines.join('\n') + '\n\n';
 }
 

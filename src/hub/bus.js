@@ -928,8 +928,18 @@ class Hub extends EventEmitter {
     this.store.appendMessage(message);
     this._persist();
 
-    // Author is implicitly caught up on their own message.
-    if (author) author.cursor = Math.max(author.cursor || 0, message.seq);
+    // The author's read position is deliberately NOT advanced here.
+    //
+    // It used to be, as "the author is implicitly caught up on their own
+    // message" — which quietly meant that speaking marked you as having read
+    // everything said while you were composing. An agent that took a minute to
+    // write a reply lost every message that arrived in that minute, silently
+    // and permanently: they were behind the cursor, so no later wait ever
+    // returned them. Found when an agent audited which sequence numbers its
+    // listener had actually seen and found three missing.
+    //
+    // Nothing needed it. An agent is never woken by its own message because
+    // _isForAgent excludes it by author, not by cursor.
 
     message.audience = this._audienceFor(channel, authorId);
 

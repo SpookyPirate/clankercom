@@ -340,6 +340,59 @@ async function verifySharedRoom() {
 }
 
 // ============================================
+// Speaking must not skip what you have not read
+// ============================================
+
+/**
+ * The worst bug this hub has had, found by an agent auditing which sequence
+ * numbers its listener had actually returned and finding three missing.
+ *
+ * postMessage advanced the author's read cursor to their own message, as "the
+ * author is implicitly caught up on their own message". What that actually
+ * meant was that speaking marked you as having read everything said while you
+ * were composing. Anything that arrived in that window fell behind the cursor
+ * and no later wait ever returned it — silent, permanent loss, in the one part
+ * of the app that must not lose anything.
+ */
+async function verifySpeakingDoesNotSkip() {
+  console.log('\nspeaking does not skip unread messages');
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-cursor-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  const listener = hub.registerAgent({ name: 'listener' });
+  const talker = hub.registerAgent({ name: 'talker' });
+  const general = hub.getChannel('general').id;
+  hub.joinChannel(listener.id, general);
+  hub.joinChannel(talker.id, general);
+
+  // Caught up to here.
+  listener.cursor = hub.postMessage({ channelId: general, authorId: talker.id, text: 'read' }).seq;
+
+  // Two arrive while the listener is composing a reply.
+  const first = hub.postMessage({ channelId: general, authorId: talker.id, text: 'while composing' });
+  const second = hub.postMessage({ channelId: general, authorId: talker.id, text: 'also while composing' });
+
+  const own = hub.postMessage({ channelId: general, authorId: listener.id, text: 'my reply' });
+  check('posting does not advance your own read position past unread messages', listener.cursor < first.seq, {
+    cursor: listener.cursor,
+    unreadFrom: first.seq,
+  });
+
+  const delivered = await hub.waitForMessages(listener.id, { timeoutMs: 800 });
+  const seqs = delivered.map((message) => message.seq);
+  check('messages that arrived while composing are still delivered', seqs.includes(first.seq) && seqs.includes(second.seq), seqs);
+  check('your own message is not returned to you', !seqs.includes(own.seq), seqs);
+
+  const again = await hub.waitForMessages(listener.id, { timeoutMs: 300 });
+  check('a second wait does not repeat them', again.length === 0, again.map((m) => m.seq));
+
+  await store.close();
+}
+
+// ============================================
 // The human is the operator, not a managed agent
 // ============================================
 
@@ -852,6 +905,7 @@ async function main() {
   await verifyReconnectIdentity();
   await verifyChannelPlacement();
   await verifySharedRoom();
+  await verifySpeakingDoesNotSkip();
   await verifyHumanIsNotAnAgent();
   await verifyChannelDeletion();
   await verifySessionReaping();
