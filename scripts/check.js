@@ -340,6 +340,63 @@ async function verifySharedRoom() {
 }
 
 // ============================================
+// The shapes the console reads
+// ============================================
+
+/**
+ * The console renders from publicAgent and publicChannel, and a field that
+ * quietly changes shape breaks a control without breaking anything loud enough
+ * to notice.
+ *
+ * That is not hypothetical: the group Members pane tested membership with
+ * `agent.groups.some(g => g.id === groupId)`, but `groups` carries display
+ * *names* while `groupIds` carries ids. Reading `.id` off a string is undefined,
+ * so membership was permanently false — every row showed "+", and because the
+ * click sends the inverse of what it believes, removing anyone was impossible.
+ * It looked like a dead control rather than a wrong one.
+ *
+ * These assert the contract the renderer depends on, in the layer that owns it.
+ */
+async function verifyWireShapes() {
+  console.log('\nthe shapes the console reads');
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-shapes-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  const agent = hub.registerAgent({ name: 'worker' });
+  const group = hub.createGroup({ name: 'Writers' });
+  hub.setGroupMembership(agent.id, group.id, true);
+
+  const wire = hub.publicAgent(hub.getAgent(agent.id));
+  check('groupIds carries ids', wire.groupIds.includes(group.id), wire.groupIds);
+  check('groups carries names, not objects', wire.groups.every((g) => typeof g === 'string'), wire.groups);
+  check(
+    'the two are distinguishable — ids are not names',
+    wire.groupIds[0] !== wire.groups[0],
+    { ids: wire.groupIds, names: wire.groups }
+  );
+  check('channels carries names', wire.channels.every((c) => typeof c === 'string'), wire.channels);
+
+  const channel = hub.publicChannel(hub.getChannel('general'));
+  check('channel members carry handles, not ids', channel.members.every((m) => typeof m === 'string'), channel.members);
+  check(
+    'a member handle matches an agent handle',
+    channel.members.includes(wire.handle),
+    { members: channel.members, handle: wire.handle }
+  );
+
+  const category = hub.createChannelGroup({ name: 'Work' });
+  hub.setChannelGroupWriteAccess(category.id, group.id, true);
+  const listed = hub.listChannelGroups()[0];
+  check('a channel group grants by agent-group id', listed.writeGroupIds.includes(group.id), listed.writeGroupIds);
+  check('and lists its channels by name', Array.isArray(listed.channels), listed.channels);
+
+  await store.close();
+}
+
+// ============================================
 // Coming back as yourself
 // ============================================
 
@@ -1042,6 +1099,7 @@ async function main() {
   await verifyReconnectIdentity();
   await verifyChannelPlacement();
   await verifySharedRoom();
+  await verifyWireShapes();
   await verifyIdentityReclaim();
   await verifyPause();
   await verifySpeakingDoesNotSkip();

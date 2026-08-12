@@ -2294,7 +2294,9 @@ function renderChannelMembers(pane, channel) {
     row.onclick = async () => {
       try {
         const move = isMember ? window.clanker.leaveChannel : window.clanker.joinChannel;
-        await move(channel.name, agent.handle);
+        const updated = await move(channel.name, agent.handle);
+        if (updated?.name) state.channels.set(updated.name, updated);
+        renderRail();
         refreshSettings();
       } catch (error) {
         toast(error.message);
@@ -2493,7 +2495,11 @@ function renderGroupMembers(pane, group) {
   }
 
   for (const agent of agents) {
-    const isMember = (agent.groups || []).some((held) => held.id === group.id);
+    // groupIds, not groups. publicAgent sends `groups` as display *names* and
+    // `groupIds` as ids; reading `.id` off a string gave undefined, so this was
+    // permanently false — every row showed "+", membership never rendered, and
+    // the click always sent "add", which made removing anyone impossible.
+    const isMember = (agent.groupIds || []).includes(group.id);
 
     const row = document.createElement('button');
     row.type = 'button';
@@ -2517,7 +2523,12 @@ function renderGroupMembers(pane, group) {
     row.append(check, name, handle);
     row.onclick = async () => {
       try {
-        await window.clanker.setGroupMembership(agent.id, group.id, !isMember);
+        // Apply the hub's answer rather than waiting for the broadcast to come
+        // back round — refreshing off state that has not caught up redraws the
+        // row exactly as it was, which reads as a control that does nothing.
+        const updated = await window.clanker.setGroupMembership(agent.id, group.id, !isMember);
+        if (updated?.id) state.agents.set(updated.id, updated);
+        renderRoster();
         refreshSettings();
       } catch (error) {
         toast(error.message);
