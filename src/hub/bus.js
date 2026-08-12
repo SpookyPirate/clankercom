@@ -401,6 +401,14 @@ class Hub extends EventEmitter {
     const agent = this.agents.get(agentId);
     if (!agent) return null;
 
+    // The operator is not a participant that can be evicted. The console no
+    // longer offers it, but the rule belongs here rather than in the one UI
+    // that happened to expose it — main.js recreates the human on every launch,
+    // so a removal would look like it worked and quietly come back.
+    if (agent.kind === 'human') {
+      throw new Error('the human running ClankerCom cannot be removed from the roster');
+    }
+
     for (const channelId of agent.channels) {
       this.channels.get(channelId)?.members.delete(agentId);
     }
@@ -487,6 +495,13 @@ class Hub extends EventEmitter {
     const agent = this.agents.get(agentId);
     if (!agent) throw new Error(`unknown agent: ${agentId}`);
     this._requireGroup(groupId);
+
+    // Groups grant agents permissions. `can()` short-circuits to true for a
+    // human before it ever looks at groups, so putting one in a group would
+    // change nothing while appearing to change something.
+    if (agent.kind === 'human') {
+      throw new Error('agent groups apply to agents; the human already has every permission');
+    }
 
     if (isMember) agent.groupIds.add(groupId);
     else agent.groupIds.delete(groupId);
@@ -772,6 +787,19 @@ class Hub extends EventEmitter {
       this.agents.get(agentId)?.channels.add(channel.id);
     }
 
+    // The operator is in every room. The console shows every channel in the
+    // rail whatever its membership, so a human who was not a member could read
+    // and post in a channel while the agents in it were told nobody else was
+    // there — and a channel an agent created over MCP left the human out
+    // entirely. Membership now matches what is actually true.
+    if (!isDm) {
+      for (const agent of this.agents.values()) {
+        if (agent.kind !== 'human') continue;
+        channel.members.add(agent.id);
+        agent.channels.add(channel.id);
+      }
+    }
+
     this._persist();
     this.emit('channel:created', this.publicChannel(channel));
     return channel;
@@ -983,6 +1011,42 @@ class Hub extends EventEmitter {
    *
    * Returns how many messages were removed.
    */
+  /**
+   * Delete a channel outright: its messages, its shared files, and the channel.
+   *
+   * The default channel is refused rather than deleted, because load() recreates
+   * it — deleting it would appear to work, survive until the next launch, and
+   * come back empty with every member gone. A refusal is honest; a deletion that
+   * silently undoes itself is not.
+   *
+   * DMs are refused too. A DM channel is derived from its two participants, so
+   * it would simply be recreated by the next message between them.
+   */
+  async deleteChannel(channelReference) {
+    const channel = this.getChannel(channelReference);
+    if (!channel) throw new Error(`unknown channel: ${channelReference}`);
+    if (channel.isDm) throw new Error('a direct message cannot be deleted');
+    if (channel.name === DEFAULT_CHANNEL) {
+      throw new Error(
+        `#${DEFAULT_CHANNEL} cannot be deleted — every agent lands there on connect. ` +
+          `Clear its history instead.`
+      );
+    }
+
+    const removedMessages = await this.clearChannel(channel.id);
+    this.files.removeChannelScope(channel.id);
+
+    for (const memberId of channel.members) {
+      this.agents.get(memberId)?.channels.delete(channel.id);
+    }
+
+    this.channels.delete(channel.id);
+    this.channelNames.delete(channel.name);
+    this._persist();
+    this.emit('channel:removed', { id: channel.id, name: channel.name });
+    return { name: channel.name, removedMessages };
+  }
+
   async clearChannel(channelReference) {
     const channel = this.getChannel(channelReference);
     if (!channel) throw new Error(`unknown channel: ${channelReference}`);

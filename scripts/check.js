@@ -340,6 +340,132 @@ async function verifySharedRoom() {
 }
 
 // ============================================
+// The human is the operator, not a managed agent
+// ============================================
+
+/**
+ * The console used to offer to sort the human into agent groups and remove them
+ * from their own roster — UI describing a multi-human product that does not
+ * exist, aimed at the one account that cannot be removed.
+ *
+ * Taking it out of the UI is not enough on its own: agents still have to see
+ * the human in the room and be able to @mention them, and the rules belong in
+ * the hub rather than in whichever screen happened to expose them.
+ */
+async function verifyHumanIsNotAnAgent() {
+  console.log('\nthe human is the operator');
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-human-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  const human = hub.registerAgent({ name: 'operator', kind: 'human', platform: 'human' });
+  const agent = hub.registerAgent({ name: 'worker' });
+
+  // ---- still visible to agents ----
+  check('agents still see the human in the roster', hub.listAgents().some((a) => a.handle === 'operator'));
+
+  const agentMade = hub.createChannel({ name: 'agent-made', createdBy: agent.id });
+  hub.joinChannel(agent.id, agentMade.id);
+  check(
+    'a channel an agent creates still contains the human',
+    agentMade.members.has(human.id),
+    'otherwise agents are told nobody else is in a room the human is reading'
+  );
+
+  const posted = hub.postMessage({
+    channelId: agentMade.id,
+    authorId: agent.id,
+    text: 'question for @operator',
+  });
+  check('a mention of the human still parses', posted.mentions.includes('operator'));
+  check(
+    'the human is not counted in the delivery audience',
+    !posted.audience.includes('operator'),
+    'humans generate no read receipts, so counting them would make "read by 1 of 2" unreachable'
+  );
+
+  // ---- but not managed like one ----
+  let removalRefused = false;
+  try {
+    hub.removeAgent(human.id);
+  } catch (error) {
+    removalRefused = /cannot be removed/.test(error.message);
+  }
+  check('the human cannot be removed from the roster', removalRefused);
+  check('the human survived the attempt', !!hub.getAgent(human.id));
+
+  const group = hub.createGroup({ name: 'Writers' });
+  let groupingRefused = false;
+  try {
+    hub.setGroupMembership(human.id, group.id, true);
+  } catch (error) {
+    groupingRefused = /apply to agents/.test(error.message);
+  }
+  check('the human cannot be put in an agent group', groupingRefused);
+  check('the human already has every permission', hub.can(human.id, 'writeGlobalFiles'));
+
+  // ---- agents are still managed normally ----
+  hub.setGroupMembership(agent.id, group.id, true);
+  check('an agent can still be grouped', hub.publicAgent(agent).groups.length === 1);
+  check('an agent can still be removed', !!hub.removeAgent(agent.id));
+
+  await store.close();
+}
+
+// ============================================
+// Deleting a channel
+// ============================================
+
+/**
+ * A channel could be cleared but never removed, so a hub accumulated every
+ * experiment forever. Deletion takes the transcript and the shared folder with
+ * it, because leaving either behind orphans files nothing can reach.
+ */
+async function verifyChannelDeletion() {
+  console.log('\ndeleting a channel');
+
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clankercom-delete-'));
+  const store = new Store(dataDir);
+  const hub = new Hub(store);
+  hub.load();
+
+  const agent = hub.registerAgent({ name: 'worker' });
+  const channel = hub.createChannel({ name: 'scratch' });
+  hub.joinChannel(agent.id, channel.id);
+  hub.postMessage({ channelId: channel.id, authorId: agent.id, text: 'temporary' });
+  hub.files.write('channel', channel.id, { name: 'notes.md', content: 'x', authorId: agent.id });
+
+  const result = await hub.deleteChannel('scratch');
+  check('deleting reports what went', result.removedMessages === 1, result);
+  check('the channel is gone', !hub.getChannel('scratch'));
+  check('members no longer belong to it', !agent.channels.has(channel.id));
+  check('its messages go with it', !hub.messages.some((m) => m.channelId === channel.id));
+  check('its shared files go with it', hub.files.list('channel', channel.id).length === 0);
+
+  // The default channel is recreated on load, so deleting it would appear to
+  // work and quietly undo itself on the next launch.
+  let refusedDefault = false;
+  try {
+    await hub.deleteChannel('general');
+  } catch (error) {
+    refusedDefault = /cannot be deleted/.test(error.message);
+  }
+  check('the default channel is refused rather than silently restored', refusedDefault);
+
+  await store.close();
+
+  // Deletion has to be durable, not just resident.
+  const reopened = new Store(dataDir);
+  const restored = new Hub(reopened);
+  restored.load();
+  check('the deletion survives a restart', !restored.getChannel('scratch'));
+  check('the default channel is still there', !!restored.getChannel('general'));
+  await reopened.close();
+}
+
+// ============================================
 // Session reaping
 // ============================================
 
@@ -713,6 +839,8 @@ async function main() {
   await verifyReconnectIdentity();
   await verifyChannelPlacement();
   await verifySharedRoom();
+  await verifyHumanIsNotAnAgent();
+  await verifyChannelDeletion();
   await verifySessionReaping();
   await verifyGroupsAndTasks();
   await verifyFilesAndHistory();

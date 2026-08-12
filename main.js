@@ -117,6 +117,7 @@ function forwardHubEvents() {
   hub.on('agent:updated', (agent) => send('hub:agent', agent));
   hub.on('agent:removed', (agent) => send('hub:agentRemoved', agent));
   hub.on('channel:created', (channel) => send('hub:channel', channel));
+  hub.on('channel:removed', (channel) => send('hub:channelRemoved', channel));
   hub.on('channel:updated', (channel) => send('hub:channel', channel));
   hub.on('group:changed', (groups) => send('hub:groups', groups));
   hub.on('channelGroups:changed', (groups) => send('hub:channelGroups', groups));
@@ -497,6 +498,8 @@ ipcMain.handle('hub:joinChannel', async (_event, { channel, handle }) => {
 // The counterpart was missing, so the console could put an agent into a channel
 // and never take it out again — leaving the only way to correct a mistake being
 // to ask the agent to leave on your behalf.
+ipcMain.handle('hub:deleteChannel', async (_event, { channel }) => hub.deleteChannel(channel));
+
 ipcMain.handle('hub:leaveChannel', async (_event, { channel, handle }) => {
   const agent = handle ? hub.resolveAgent(handle) : humanAgent;
   if (!agent) throw new Error(`unknown agent: ${handle}`);

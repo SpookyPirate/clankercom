@@ -486,15 +486,23 @@ ${agent.description}` : ''
 
   const actions = document.createElement('div');
   actions.className = 'roster-actions';
-  const menuButton = document.createElement('button');
-  menuButton.className = 'icon-button';
-  menuButton.innerHTML = icon('more');
-  menuButton.setAttribute('aria-label', `Manage ${agent.displayName}`);
-  menuButton.onclick = (event) => {
-    event.stopPropagation();
-    toggleRosterMenu(agent, row);
-  };
-  actions.appendChild(menuButton);
+
+  // You are the operator, not a managed participant. Offering to sort yourself
+  // into an agent group or remove yourself from your own roster describes a
+  // multi-human product that does not exist — and "remove from roster" pointed
+  // at the one account that cannot be removed. Your own settings live by your
+  // name at the bottom of the rail.
+  if (agent.kind !== 'human') {
+    const menuButton = document.createElement('button');
+    menuButton.className = 'icon-button';
+    menuButton.innerHTML = icon('more');
+    menuButton.setAttribute('aria-label', `Manage ${agent.displayName}`);
+    menuButton.onclick = (event) => {
+      event.stopPropagation();
+      toggleRosterMenu(agent, row);
+    };
+    actions.appendChild(menuButton);
+  }
 
   row.append(button, actions);
   return row;
@@ -1507,6 +1515,29 @@ const SETTINGS_SCOPES = {
         { key: 'brief', label: 'Brief', render: (pane) => renderChannelBrief(pane, channel) },
         { key: 'members', label: 'Members', render: (pane) => renderChannelMembers(pane, channel) },
       ],
+      // #general is where every agent lands on connect and the hub recreates it
+      // on load, so offering to delete it would be offering something that
+      // silently undoes itself.
+      danger:
+        channel.name === state.defaultChannel
+          ? null
+          : {
+              label: 'Delete channel',
+              run: async () => {
+                const sure = await confirmAction({
+                  title: `Delete #${channel.name}?`,
+                  body:
+                    'The channel, its entire transcript, and every file in its shared folder ' +
+                    'are removed permanently. Export the transcript first if you want a copy. ' +
+                    'This cannot be undone.',
+                  confirmLabel: 'Delete channel',
+                });
+                if (!sure) return false;
+                await window.clanker.deleteChannel(channel.name);
+                toast(`Deleted #${channel.name}.`, 'ok');
+                return true;
+              },
+            },
     };
   },
 
@@ -1958,11 +1989,14 @@ function renderChannelMembers(pane, channel) {
       'agent that posts here joins automatically, so replies always reach the sender.',
   });
 
-  const everyone = Array.from(state.agents.values());
+  // Agents only. You see every channel in the rail whatever its membership, so
+  // a toggle against your own name would control almost nothing while implying
+  // it controlled something.
+  const everyone = Array.from(state.agents.values()).filter((agent) => agent.kind !== 'human');
   if (!everyone.length) {
     const empty = document.createElement('p');
     empty.className = 'modal-section-note';
-    empty.textContent = 'Nobody has connected yet.';
+    empty.textContent = 'No agents have connected yet.';
     section.appendChild(empty);
     return;
   }
@@ -1981,7 +2015,7 @@ function renderChannelMembers(pane, channel) {
 
     const name = document.createElement('span');
     name.className = 'member-name';
-    name.textContent = agent.displayName + (agent.kind === 'human' ? ' (you)' : '');
+    name.textContent = agent.displayName;
 
     const handle = document.createElement('span');
     handle.className = 'member-handle mono';
@@ -2527,6 +2561,17 @@ window.clanker.on('hub:agent', (agent) => {
 
 window.clanker.on('hub:channel', (channel) => {
   state.channels.set(channel.name, channel);
+  renderRail();
+  refreshSettings();
+});
+
+window.clanker.on('hub:channelRemoved', ({ name }) => {
+  state.channels.delete(name);
+  state.unread.delete(name);
+
+  // Deleting the channel you were reading has to land you somewhere real, or
+  // the console is left pointed at a transcript that no longer exists.
+  if (state.activeChannel === name) selectChannel(state.defaultChannel);
   renderRail();
 });
 

@@ -18,6 +18,7 @@ const SUBSCRIBABLE_EVENTS = [
   'hub:channel',
   'hub:groups',
   'hub:channelGroups',
+  'hub:channelRemoved',
   'hub:task',
   'hub:settings',
   'hub:peers',
@@ -53,6 +54,7 @@ contextBridge.exposeInMainWorld('clanker', {
   openDm: (handle) => ipcRenderer.invoke('hub:openDm', { handle }),
   joinChannel: (channel, handle) => ipcRenderer.invoke('hub:joinChannel', { channel, handle }),
   leaveChannel: (channel, handle) => ipcRenderer.invoke('hub:leaveChannel', { channel, handle }),
+  deleteChannel: (channel) => ipcRenderer.invoke('hub:deleteChannel', { channel }),
 
   // ---- groups and roster management ----
   createGroup: (name) => ipcRenderer.invoke('hub:createGroup', { name }),
