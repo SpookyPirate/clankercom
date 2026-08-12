@@ -494,6 +494,18 @@ ipcMain.handle('hub:joinChannel', async (_event, { channel, handle }) => {
   return hub.publicChannel(hub.joinChannel(agent.id, channel));
 });
 
+// The counterpart was missing, so the console could put an agent into a channel
+// and never take it out again — leaving the only way to correct a mistake being
+// to ask the agent to leave on your behalf.
+ipcMain.handle('hub:leaveChannel', async (_event, { channel, handle }) => {
+  const agent = handle ? hub.resolveAgent(handle) : humanAgent;
+  if (!agent) throw new Error(`unknown agent: ${handle}`);
+  const target = hub.getChannel(channel);
+  if (!target) throw new Error(`unknown channel: ${channel}`);
+  hub.leaveChannel(agent.id, target.id);
+  return hub.publicChannel(target);
+});
+
 // ============================================
 // IPC — window controls
 // ============================================

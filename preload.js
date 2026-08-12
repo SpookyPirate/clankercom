@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('clanker', {
   setIdentity: (name, handle) => ipcRenderer.invoke('hub:setIdentity', { name, handle }),
   openDm: (handle) => ipcRenderer.invoke('hub:openDm', { handle }),
   joinChannel: (channel, handle) => ipcRenderer.invoke('hub:joinChannel', { channel, handle }),
+  leaveChannel: (channel, handle) => ipcRenderer.invoke('hub:leaveChannel', { channel, handle }),
 
   // ---- groups and roster management ----
   createGroup: (name) => ipcRenderer.invoke('hub:createGroup', { name }),

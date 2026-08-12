@@ -1692,19 +1692,43 @@ function paneTextarea(parent, { value, placeholder }) {
   return area;
 }
 
+/**
+ * A setting is a switch plus the sentence explaining what it does. Uses the
+ * stylesheet's existing permission-row and switch components rather than new
+ * class names — inventing `.perm-row` alongside the real `.permission-row` is
+ * how a pane ends up rendering as an unstyled wall of text that still passes a
+ * "does it have children" check.
+ */
 function paneToggleRow(parent, { name, note, checked, onChange }) {
   const row = document.createElement('label');
-  row.className = 'perm-row';
-  row.innerHTML =
-    '<span class="perm-text"><span class="perm-name"></span><span class="perm-note"></span></span>' +
-    '<span class="switch"><input type="checkbox"><span class="track"></span></span>';
-  row.querySelector('.perm-name').textContent = name;
-  row.querySelector('.perm-note').textContent = note || '';
+  row.className = 'permission-row';
 
-  const box = row.querySelector('input');
+  const copy = document.createElement('div');
+  copy.className = 'permission-copy';
+
+  const title = document.createElement('div');
+  title.className = 'permission-name';
+  title.textContent = name;
+  copy.appendChild(title);
+
+  if (note) {
+    const detail = document.createElement('div');
+    detail.className = 'permission-note';
+    detail.textContent = note;
+    copy.appendChild(detail);
+  }
+
+  const toggle = document.createElement('span');
+  toggle.className = 'switch';
+  toggle.innerHTML =
+    '<input type="checkbox">' +
+    '<span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>';
+
+  const box = toggle.querySelector('input');
   box.checked = !!checked;
   box.onchange = () => onChange(box.checked, box);
 
+  row.append(copy, toggle);
   parent.appendChild(row);
   return row;
 }
@@ -1756,10 +1780,22 @@ function renderHubConnection(pane) {
       'exposure. Point any MCP client at this URL.',
   });
 
+  const url = `http://127.0.0.1:${state.port}/mcp`;
+
   const endpoint = document.createElement('pre');
   endpoint.className = 'code-block';
-  endpoint.textContent = `http://127.0.0.1:${state.port}/mcp`;
+  endpoint.textContent = url;
   section.appendChild(endpoint);
+
+  // An endpoint you cannot copy is an endpoint you retype wrongly.
+  const copy = document.createElement('button');
+  copy.className = 'control control--ghost';
+  copy.textContent = 'Copy endpoint';
+  copy.onclick = async () => {
+    await navigator.clipboard.writeText(url);
+    toast('Endpoint copied.', 'ok');
+  };
+  section.appendChild(copy);
 
   const listening = paneSection(pane, { title: 'Right now' });
   const summary = document.createElement('p');
@@ -1914,14 +1950,55 @@ function renderChannelBrief(pane, channel) {
 }
 
 function renderChannelMembers(pane, channel) {
-  const members = channel.members || [];
-  paneSection(pane, {
-    title: `${members.length} member${members.length === 1 ? '' : 's'}`,
-    note: members.length
-      ? members.map((handle) => '@' + handle).join(', ') +
-        ' — every one of them receives every message here.'
-      : 'Nobody is in this channel yet.',
+  const members = new Set(channel.members || []);
+  const section = paneSection(pane, {
+    title: `${members.size} member${members.size === 1 ? '' : 's'}`,
+    note:
+      'Everyone here receives every message in this channel. Click to add or remove — an ' +
+      'agent that posts here joins automatically, so replies always reach the sender.',
   });
+
+  const everyone = Array.from(state.agents.values());
+  if (!everyone.length) {
+    const empty = document.createElement('p');
+    empty.className = 'modal-section-note';
+    empty.textContent = 'Nobody has connected yet.';
+    section.appendChild(empty);
+    return;
+  }
+
+  for (const agent of everyone) {
+    const isMember = members.has(agent.handle);
+
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'member-row' + (isMember ? ' is-member' : '');
+    row.setAttribute('aria-pressed', String(isMember));
+
+    const check = document.createElement('span');
+    check.className = 'member-check';
+    check.textContent = isMember ? '✓' : '+';
+
+    const name = document.createElement('span');
+    name.className = 'member-name';
+    name.textContent = agent.displayName + (agent.kind === 'human' ? ' (you)' : '');
+
+    const handle = document.createElement('span');
+    handle.className = 'member-handle mono';
+    handle.textContent = '@' + agent.handle;
+
+    row.append(check, name, handle);
+    row.onclick = async () => {
+      try {
+        const move = isMember ? window.clanker.leaveChannel : window.clanker.joinChannel;
+        await move(channel.name, agent.handle);
+        refreshSettings();
+      } catch (error) {
+        toast(error.message);
+      }
+    };
+    section.appendChild(row);
+  }
 }
 
 async function saveChannel(name, patch) {
@@ -2103,19 +2180,38 @@ function renderGroupMembers(pane, group) {
     note: 'Agents can belong to any number of groups.',
   });
 
-  for (const agent of Array.from(state.agents.values())) {
-    if (agent.kind === 'human') continue;
+  const agents = Array.from(state.agents.values()).filter((agent) => agent.kind !== 'human');
+  if (!agents.length) {
+    const empty = document.createElement('p');
+    empty.className = 'modal-section-note';
+    empty.textContent = 'No agents have connected yet. They appear here once they do.';
+    section.appendChild(empty);
+    return;
+  }
+
+  for (const agent of agents) {
     const isMember = (agent.groups || []).some((held) => held.id === group.id);
 
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'member-row' + (isMember ? ' is-member' : '');
-    row.innerHTML =
-      '<span class="member-name"></span><span class="member-handle mono"></span>' +
-      '<span class="member-state"></span>';
-    row.querySelector('.member-name').textContent = agent.displayName;
-    row.querySelector('.member-handle').textContent = '@' + agent.handle;
-    row.querySelector('.member-state').textContent = isMember ? 'In group' : 'Add';
+    row.setAttribute('aria-pressed', String(isMember));
+
+    // The tick is the state; the row is the control. Both have to be visible or
+    // "click a name to toggle membership" is a rule nobody can guess.
+    const check = document.createElement('span');
+    check.className = 'member-check';
+    check.textContent = isMember ? '✓' : '+';
+
+    const name = document.createElement('span');
+    name.className = 'member-name';
+    name.textContent = agent.displayName;
+
+    const handle = document.createElement('span');
+    handle.className = 'member-handle mono';
+    handle.textContent = '@' + agent.handle;
+
+    row.append(check, name, handle);
     row.onclick = async () => {
       try {
         await window.clanker.setGroupMembership(agent.id, group.id, !isMember);
