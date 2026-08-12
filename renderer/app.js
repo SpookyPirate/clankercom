@@ -106,6 +106,7 @@ const el = {
   settingsSave: document.getElementById('settings-save'),
   openHubSettings: document.getElementById('open-hub-settings'),
   addChannelGroup: document.getElementById('add-channel-group'),
+  mentionPopup: document.getElementById('mention-popup'),
   actionExport: document.getElementById('action-export'),
   actionClear: document.getElementById('action-clear'),
   confirmModal: document.getElementById('confirm-modal'),
@@ -788,11 +789,233 @@ function resizeComposer() {
 
 el.composer.addEventListener('input', resizeComposer);
 el.composer.addEventListener('keydown', (event) => {
+  // The mention list owns these keys while it is open, or Enter would send a
+  // half-typed handle instead of completing the one that is highlighted.
+  if (mention.open) {
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      mention.active = (mention.active + step + mention.matches.length) % mention.matches.length;
+      renderMentionPopup();
+      return;
+    }
+    if (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey)) {
+      event.preventDefault();
+      applyMention(mention.active);
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeMentionPopup();
+      return;
+    }
+  }
+
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
     sendCurrentMessage();
   }
 });
+
+// ============================================
+// Mention autocomplete
+// ============================================
+
+/**
+ * Typing @ offers who you can address.
+ *
+ * Handles are slugs an agent chose for itself — @payments-api-migration,
+ * @curing-monitor — and retyping one from memory is how a mention silently
+ * resolves to nobody. The hub now says nothing when a mention matches no known
+ * handle, which is the right behaviour and also means a typo fails quietly.
+ * Completing from the actual roster is what stops the typo happening.
+ *
+ * @all is offered alongside the agents because it is a real target now, and
+ * because a human reaching for it should find it rather than discover it does
+ * nothing.
+ */
+const BROADCAST_TARGET = {
+  handle: 'all',
+  displayName: 'Everyone in this channel',
+  broadcast: true,
+};
+
+const mention = {
+  open: false,
+  start: -1,      // index of the @ being completed
+  query: '',
+  matches: [],
+  active: 0,
+};
+
+/** Candidates for the current channel, most useful first. */
+function mentionCandidates(query) {
+  const needle = query.toLowerCase();
+
+  const channel = state.channels.get(state.activeChannel);
+  const members = new Set(channel?.members || []);
+
+  const agents = Array.from(state.agents.values())
+    .filter((agent) => agent.id !== state.self?.id)
+    .map((agent) => ({
+      handle: agent.handle,
+      displayName: agent.displayName,
+      status: agent.status,
+      platform: agent.platform,
+      inChannel: members.has(agent.handle),
+    }));
+
+  const pool = [BROADCAST_TARGET, ...agents];
+
+  return pool
+    .filter((entry) => {
+      if (!needle) return true;
+      return (
+        entry.handle.toLowerCase().includes(needle) ||
+        entry.displayName.toLowerCase().includes(needle)
+      );
+    })
+    .sort((a, b) => {
+      // A prefix match is what someone typing expects to see first.
+      const aPrefix = a.handle.toLowerCase().startsWith(needle) ? 0 : 1;
+      const bPrefix = b.handle.toLowerCase().startsWith(needle) ? 0 : 1;
+      if (aPrefix !== bPrefix) return aPrefix - bPrefix;
+
+      // Addressing the room ranks above any individual it ties with. It is a
+      // common intent, it is one entry rather than many, and it is the one a
+      // human is most likely to reach for without knowing it exists.
+      if (a.broadcast !== b.broadcast) return a.broadcast ? -1 : 1;
+
+      // Then people actually in this channel — mentioning someone who is not
+      // here does not reach them, so they are the less likely intent.
+      if (!!b.inChannel !== !!a.inChannel) return b.inChannel ? 1 : -1;
+      return a.handle.localeCompare(b.handle);
+    })
+    .slice(0, 8);
+}
+
+/**
+ * Find the @token the caret sits in, if any.
+ *
+ * Only fires when the @ starts a word, so an email address or a decorative @
+ * mid-token does not open the list.
+ */
+function mentionContext() {
+  const value = el.composer.value;
+  const caret = el.composer.selectionStart;
+  if (caret !== el.composer.selectionEnd) return null;
+
+  const upto = value.slice(0, caret);
+  const at = upto.lastIndexOf('@');
+  if (at === -1) return null;
+
+  const before = at === 0 ? '' : upto[at - 1];
+  if (before && !/\s/.test(before)) return null;
+
+  const typed = upto.slice(at + 1);
+  // A space ends the mention; handles never contain one.
+  if (/[\s@]/.test(typed)) return null;
+  if (typed.length > 48) return null;
+
+  return { start: at, query: typed };
+}
+
+function refreshMentionPopup() {
+  const context = mentionContext();
+  if (!context) return closeMentionPopup();
+
+  const matches = mentionCandidates(context.query);
+  if (!matches.length) return closeMentionPopup();
+
+  mention.open = true;
+  mention.start = context.start;
+  mention.query = context.query;
+  mention.matches = matches;
+  mention.active = Math.min(mention.active, matches.length - 1);
+  renderMentionPopup();
+}
+
+function renderMentionPopup() {
+  el.mentionPopup.innerHTML = '';
+
+  mention.matches.forEach((entry, index) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'mention-item' + (index === mention.active ? ' is-active' : '');
+    row.setAttribute('role', 'option');
+    row.setAttribute('aria-selected', String(index === mention.active));
+
+    const dot = document.createElement('span');
+    dot.className = entry.broadcast ? 'mention-broadcast' : `dot ${entry.status}`;
+    if (entry.broadcast) dot.textContent = '@';
+
+    const name = document.createElement('span');
+    name.className = 'mention-name';
+    name.textContent = entry.displayName;
+
+    const handle = document.createElement('span');
+    handle.className = 'mention-handle mono';
+    handle.textContent = '@' + entry.handle;
+
+    row.append(dot, name, handle);
+
+    if (!entry.broadcast && !entry.inChannel) {
+      const note = document.createElement('span');
+      note.className = 'mention-note';
+      note.textContent = 'not in this channel';
+      row.appendChild(note);
+    }
+
+    // Pointer down rather than click: the textarea would lose focus first and
+    // the caret position with it.
+    row.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      applyMention(index);
+    });
+    row.addEventListener('mouseenter', () => {
+      mention.active = index;
+      renderMentionPopup();
+    });
+
+    el.mentionPopup.appendChild(row);
+  });
+
+  el.mentionPopup.hidden = false;
+}
+
+function closeMentionPopup() {
+  if (!mention.open) return;
+  mention.open = false;
+  mention.active = 0;
+  el.mentionPopup.hidden = true;
+}
+
+function applyMention(index) {
+  const entry = mention.matches[index];
+  if (!entry) return;
+
+  const value = el.composer.value;
+  const before = value.slice(0, mention.start);
+  const after = value.slice(mention.start + 1 + mention.query.length);
+  const insert = `@${entry.handle}`;
+  // A trailing space, unless the caret already sits against one — completing a
+  // name and then having to press space yourself is the kind of small friction
+  // that makes an autocomplete feel unfinished.
+  const spacer = after.startsWith(' ') ? '' : ' ';
+
+  el.composer.value = before + insert + spacer + after;
+  const caret = before.length + insert.length + spacer.length;
+  el.composer.setSelectionRange(caret, caret);
+
+  closeMentionPopup();
+  resizeComposer();
+  el.composer.focus();
+}
+
+el.composer.addEventListener('input', refreshMentionPopup);
+el.composer.addEventListener('click', refreshMentionPopup);
+el.composer.addEventListener('blur', () => closeMentionPopup());
+
 
 // ============================================
 // Browser peers

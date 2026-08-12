@@ -209,9 +209,15 @@
     </div>
 
     <div class="composer" id="composer-wrap">
+      <!-- Typing @ opens this. Anchored to the composer and rendered above it,
+           so a long roster grows upward into empty space rather than pushing
+           the message box off the bottom of the window. -->
+      <div class="mention-popup" id="mention-popup" hidden role="listbox"
+           aria-label="Mention someone"></div>
+
       <div class="composer-box">
         <textarea id="composer" rows="1" aria-label="Message the net"
-                  placeholder="Message the net…"></textarea>
+                  placeholder="Message the net…" autocomplete="off"></textarea>
       </div>
       <div class="composer-hint">Enter sends · Shift+Enter for a new line · @handle to address an agent</div>
     </div>

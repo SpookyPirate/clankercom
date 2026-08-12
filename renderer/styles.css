@@ -2575,3 +2575,94 @@ button {
 .settings-pane .modal-section > .permission-row + .permission-row {
   margin-top: calc(var(--s3) * -1);
 }
+
+/* ============================================
+   Mention autocomplete
+   ============================================
+   Anchored to the composer and opening upward: a roster of eight would
+   otherwise push the message box off the bottom of the window. */
+
+.composer {
+  position: relative;
+}
+
+.mention-popup {
+  position: absolute;
+  left: var(--s4);
+  right: var(--s4);
+  bottom: calc(100% - var(--s2));
+  z-index: 40;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: var(--s1);
+  background: var(--float);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--lift-menu);
+  animation: arrive 120ms var(--ease-out);
+}
+
+.mention-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  min-height: var(--target-min);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius);
+  text-align: left;
+  color: var(--ink-dim);
+}
+
+/* Keyboard and pointer share one highlight: two different "selected" looks in
+   the same list is how a user loses track of what Enter will do. */
+.mention-item.is-active {
+  background: var(--state-active);
+  color: var(--ink);
+}
+
+.mention-name {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-ui);
+}
+
+.mention-item.is-active .mention-name {
+  color: var(--ink);
+}
+
+.mention-handle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-small);
+  color: var(--ink-faint);
+}
+
+.mention-item.is-active .mention-handle {
+  color: var(--signal-bright);
+}
+
+/* @all gets the accent rather than a presence dot — it is a target, not a
+   participant, and it has no status to report. */
+.mention-broadcast {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 8px;
+  flex: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: var(--t-meta);
+  color: var(--signal-bright);
+}
+
+.mention-note {
+  flex: 0 0 auto;
+  font-family: var(--font-ui-small);
+  font-size: var(--t-meta);
+  color: var(--standby);
+}
