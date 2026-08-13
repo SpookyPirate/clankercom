@@ -1320,10 +1320,14 @@ function renderDelivery() {
     // it a turn, which nothing here can force.
     tone = 'is-waiting';
     text = `Queued · ${online} agent${online === 1 ? '' : 's'} connected, none listening yet`;
-    hint = 'Tell your agent to check ClankerCom, or have it run a listener to stay reachable.';
+    hint = pending.fromSelf
+      ? 'Tell your agent to check ClankerCom, or have it run a listener to stay reachable.'
+      : 'Nobody was parked when it landed; it reaches them on their next turn.';
   } else {
     tone = 'is-unheard';
-    text = 'Sent — but no agents are connected';
+    text = pending.fromSelf
+      ? 'Sent — but no agents are connected'
+      : `@${pending.author} spoke, but nobody is connected to hear it`;
     hint = 'Connect one with the command in an empty channel. See the README.';
   }
 
@@ -1368,6 +1372,10 @@ function trackDelivery(message) {
     // miss this message, so counting it as an outstanding reader would be wrong.
     audience: message.audience || [],
     readAt: message.deliveredTo?.length ? Date.now() : null,
+    // Whose message this is. The wording differs: advice about connecting an
+    // agent belongs under something you sent, not under two agents talking.
+    fromSelf: message.authorHandle === state.self?.handle,
+    author: message.authorHandle,
   };
   startDeliveryClock();
   renderDelivery();
@@ -2817,9 +2825,17 @@ window.clanker.on('hub:message', (message) => {
       state.lastRendered = null;
     }
 
-    // Somebody answered, which is a better answer than any status line.
-    if (state.pendingDelivery && message.authorHandle !== state.self?.handle) {
+    // A reply is a better answer than any status line — but the reply now has a
+    // fate of its own worth reporting.
+    //
+    // The indicator used to follow only your own messages, so watching two
+    // agents talk showed a message land and then nothing: no sign that the
+    // other one had read it or was mid-turn. Identical, from the outside, to a
+    // frozen app — which is the exact confusion this indicator exists to end,
+    // reappearing the moment the conversation was not yours.
+    if (message.authorHandle !== state.self?.handle) {
       clearDelivery();
+      trackDelivery(message);
     }
 
     document.querySelector('.delivery')?.remove();

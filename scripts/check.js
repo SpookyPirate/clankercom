@@ -291,7 +291,41 @@ async function verifySharedRoom() {
     const heard = await Promise.all(waiting);
     check('a channel message reaches every parked agent', heard.every((r) => r.includes('index')));
 
-    // ---- the audience is the denominator the console was missing ----
+    // ---- an agent-to-agent message reports itself the same way ----
+  // The console follows whichever message is newest, not only the human's, so
+  // watching two agents talk shows read and working states rather than nothing.
+  // Both facts it needs have to be on the *emitted* message, since that is all
+  // the renderer sees for traffic it did not send.
+  // In its own channel: posting into #general would shift what the later
+  // "limit: 1" reads return, and a test that quietly moves another test's
+  // ground is worse than no test.
+  const side = hub.createChannel({ name: 'side-room' });
+  hub.joinChannel(hub.getAgentByHandle('alpha').id, side.id);
+  hub.joinChannel(hub.getAgentByHandle('bravo').id, side.id);
+
+  const emitted = await new Promise((resolve) => {
+    hub.once('message', resolve);
+    hub.postMessage({
+      channelId: side.id,
+      authorId: hub.getAgentByHandle('alpha').id,
+      text: 'agent to agent',
+    });
+  });
+  check(
+    'an emitted message already carries its audience',
+    Array.isArray(emitted.audience) && emitted.audience.includes('bravo'),
+    emitted.audience
+  );
+  check('and excludes its own author', !emitted.audience.includes('alpha'), emitted.audience);
+
+  const receipt = await new Promise((resolve) => {
+    hub.once('message:seen', resolve);
+    hub.markSeen([emitted], hub.getAgentByHandle('bravo'));
+  });
+  check('a read by any agent raises a receipt', receipt.seenBy.includes('bravo'), receipt);
+  check('the receipt identifies the message', receipt.seq === emitted.seq, receipt);
+
+  // ---- the audience is the denominator the console was missing ----
     check(
       'a post records the audience it went to',
       ['alpha', 'bravo', 'charlie'].every((handle) => posted.audience.includes(handle)),
